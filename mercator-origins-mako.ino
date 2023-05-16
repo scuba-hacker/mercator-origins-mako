@@ -10,6 +10,7 @@
 //AXP192.cpp SetSleep() is different than the one for M5StickC #1 https://github.com/m5stack/M5StickC-Plus/issues/1
 #include <M5StickCPlus.h>
 
++// rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
 #include "mercator_secrets.c"
 
 #include <TinyGPS++.h>
