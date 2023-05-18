@@ -377,6 +377,8 @@ std::string getCardinal(float b);
 //void getTempAndHumidityAHT20(float& h, float& t);
 
 void getTempAndHumidityAndAirPressureBME280(float& h, float& t, float& p, float& p_a);
+
+// depth in metres, temperature in C, water pressure in Bar, Altitude in m
 void getDepth(float& d, float& d_t, float& d_p, float& d_a);
 
 void testForDualButtonPressAutoShutdownChange();
@@ -1197,7 +1199,7 @@ void loop()
 
         M5.Lcd.printf("Depth:%.0f m  ", depth);
         M5.Lcd.setCursor(5, 51);
-        M5.Lcd.printf("Water P:%.0f% mBar", water_pressure);
+        M5.Lcd.printf("Water P:%.1f% Bar", water_pressure);
  
         M5.Lcd.setCursor(5, 68);
         M5.Lcd.printf("T:%s", nextTarget->_label);
@@ -1431,7 +1433,7 @@ void sendUplinkTelemetryMessageV1()
     uint16_t uplink_length=22;     // including length and checksum.
     uint16_t uplink_msgtype=0;     // 0 is telemetry message zero!
     uint16_t uplink_depth = depth;
-    uint16_t uplink_water_pressure = water_pressure * 10.0;
+    uint16_t uplink_water_pressure = water_pressure * 100.0;
     uint16_t uplink_water_temperature = water_temperature * 10.0;
     uint16_t uplink_enclosure_temperature = temperature*10.0;
     uint16_t uplink_enclosure_humidity = humidity*10.0;
@@ -1482,7 +1484,7 @@ void sendUplinkTelemetryMessageV2()
     uint16_t uplink_length=46;     // including length and checksum.
     uint16_t uplink_msgtype=0;     // 0 is full fat telemetry message zero!
     uint16_t uplink_depth = depth*10.0;
-    uint16_t uplink_water_pressure = water_pressure * 10.0;
+    uint16_t uplink_water_pressure = water_pressure * 100.0;
     uint16_t uplink_water_temperature = water_temperature * 10.0;
     uint16_t uplink_enclosure_temperature = temperature*10.0;
     uint16_t uplink_enclosure_humidity = humidity*10.0;
@@ -1571,7 +1573,7 @@ void sendUplinkTelemetryMessageV3()
     uint16_t uplink_length=70;     // including length and checksum.
     uint16_t uplink_msgtype=0;     // 0 is full fat telemetry message zero!
     uint16_t uplink_depth = depth*10.0;
-    uint16_t uplink_water_pressure = water_pressure * 10.0;
+    uint16_t uplink_water_pressure = water_pressure * 100.0;
     
     uint16_t uplink_water_temperature = water_temperature * 10.0;
     uint16_t uplink_enclosure_temperature = temperature*10.0;
@@ -1681,7 +1683,7 @@ void sendUplinkTelemetryMessageV4()
     uint16_t uplink_length=70;     // including length and checksum.
     uint16_t uplink_msgtype=0;     // 0 is full fat telemetry message zero!
     uint16_t uplink_depth = depth*10.0;
-    uint16_t uplink_water_pressure = water_pressure * 10.0;
+    uint16_t uplink_water_pressure = water_pressure * 100.0;
     
     uint16_t uplink_water_temperature = water_temperature * 10.0;
     uint16_t uplink_enclosure_temperature = temperature*10.0;
@@ -1814,7 +1816,7 @@ void sendUplinkTelemetryMessageV5()
     uint8_t  number_uplink_metrics=57; // number of metrics including length, not including checksum
     uint16_t uplink_msgtype=0;     // 0 is full fat telemetry message zero!
     uint16_t uplink_depth = depth*10.0;
-    uint16_t uplink_water_pressure = water_pressure * 10.0;
+    uint16_t uplink_water_pressure = water_pressure * 100.0;
     
     uint16_t uplink_water_temperature = water_temperature * 10.0;
     uint16_t uplink_enclosure_temperature = temperature*10.0;
@@ -2460,6 +2462,7 @@ void getTempAndHumidityAHT20(float& h, float& t)
 }
 */
 
+// depth in metres, temperature in C, water pressure in Bar, Altitude in m
 void getDepth(float& d, float& d_t, float& d_p, float& d_a)
 {
   if (!enableDepthSensor || !depthAvailable)
@@ -2487,7 +2490,7 @@ void getDepth(float& d, float& d_t, float& d_p, float& d_a)
   }
 
   d_t = BlueRobotics_DepthSensor.temperature();
-  d_p = BlueRobotics_DepthSensor.pressure();
+  d_p = BlueRobotics_DepthSensor.pressure() / 1000.0;
   d_a = BlueRobotics_DepthSensor.altitude();
 }
 
