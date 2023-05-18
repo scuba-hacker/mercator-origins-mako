@@ -2037,10 +2037,9 @@ void refreshDepthDisplay()
   M5.Lcd.setCursor(28,165);
   M5.Lcd.setTextSize(3);
   M5.Lcd.setTextFont(0);
-  M5.Lcd.setTextColor(TFT_WHITE);
-  M5.Lcd.printf("%.2fm",depth);
+  M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
+  M5.Lcd.printf("%.1fm",depth);
 }
-
 
 void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
 {
