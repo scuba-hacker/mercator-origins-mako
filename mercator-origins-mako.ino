@@ -723,7 +723,7 @@ void loop_no_gps()
   M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
   M5.Lcd.setCursor(0, 0);
 
-  M5.Lcd.printf("  %.2f m\n",depth); // was gesture char
+  M5.Lcd.printf("  %.2f m  \n",depth); // was gesture char
 
   M5.Lcd.setTextSize(1);
   M5.Lcd.println("");
@@ -2037,7 +2037,7 @@ void refreshDepthDisplay()
   M5.Lcd.setTextSize(3);
   M5.Lcd.setTextFont(0);
   M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
-  M5.Lcd.printf("%.1fm",depth);
+  M5.Lcd.printf("%.1fm  ",depth);
 }
 
 void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
