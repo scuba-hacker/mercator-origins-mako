@@ -10,7 +10,7 @@
 //AXP192.cpp SetSleep() is different than the one for M5StickC #1 https://github.com/m5stack/M5StickC-Plus/issues/1
 #include <M5StickCPlus.h>
 
-+// rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
+// rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
 #include "mercator_secrets.c"
 
 #include <TinyGPS++.h>
@@ -133,7 +133,7 @@ char newWayMarkerLabel[2];
 //#include <Adafruit_APDS9960.h>
 #include "MS5837.h" // water pressure sensor
 
-#define SEALEVELPRESSURE_HPA (1020.30)  // today's barometric air pressure
+const uint16_t SEALEVELPRESSURE_HPA=1000.00;
 
 #include <math.h>
 
@@ -252,7 +252,7 @@ void switchToNextDisplayToShow()
   M5.Lcd.fillScreen(TFT_BLACK);
 }
 
-#define RED_LED_GPIO 10
+const uint8_t RED_LED_GPIO = 10;
 
 const bool writeLogToSerial=false;
 
@@ -290,8 +290,7 @@ Adafruit_BME280 Adafruit_TempHumidityPressure;
 
 MS5837 BlueRobotics_DepthSensor;
 
-#define GESTURE_INT_PIN 3
-
+const uint8_t GESTURE_INT_PIN = 3;
 
 template <typename T> struct vector
 {
@@ -344,19 +343,19 @@ float s_lastDisplayedCompassHeading=0.0;
 uint32_t s_lastTempHumidityDisplayRefresh=0;
 const uint32_t s_tempHumidityUpdateRate=1000;   // time between each compass update to screen
 
+const uint8_t BUTTON_GOPRO_TOP_PIN=25;
+const uint8_t BUTTON_GOPRO_SIDE_PIN=0;
+const uint32_t MERCATOR_DEBOUNCE_MS=0;
 
-#define BUTTON_GOPRO_TOP_PIN 25
-#define BUTTON_GOPRO_SIDE_PIN 0   
-#define DEBOUNCE_MS 10
+const uint8_t GROVE_GPS_RX_PIN=33;
+const uint8_t GROVE_GPS_TX_PIN=32;
 
-#define GROVE_GPS_RX_PIN 33
-#define GROVE_GPS_TX_PIN 32
+const uint8_t HAT_GPS_RX_PIN=26;
+const uint8_t IR_LED_GPS_TX_PIN=9;
 
-#define HAT_GPS_RX_PIN 26
-#define IR_LED_GPS_TX_PIN 9      // note this is the infra-red LED
 
-Button BtnGoProTop = Button(BUTTON_GOPRO_TOP_PIN, true, DEBOUNCE_MS);    // from utility/Button.h for M5 Stick C Plus
-Button BtnGoProSide = Button(BUTTON_GOPRO_SIDE_PIN, true, DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
+Button BtnGoProTop = Button(BUTTON_GOPRO_TOP_PIN, true, MERCATOR_DEBOUNCE_MS);    // from utility/Button.h for M5 Stick C Plus
+Button BtnGoProSide = Button(BUTTON_GOPRO_SIDE_PIN, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 uint16_t sideCount=0,topCount=0;
 
 Button* p_primaryButton = NULL;
