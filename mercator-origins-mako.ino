@@ -13,6 +13,27 @@
 // rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
 #include "mercator_secrets.c"
 
+#include <esp_now.h>
+
+uint16_t ESPNowMessagesDelivered = 0;
+uint16_t ESPNowMessagesFailedToDeliver = 0;
+
+esp_now_peer_info_t ESPNow_slave;
+const uint8_t ESPNOW_CHANNEL = 1;
+const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
+const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
+
+#include "tb_display.h"
+
+// screen Rotation values:
+// 1 = Button right
+// 2 = Button above
+// 3 = Button left
+// 4 = Button below
+
+uint8_t tb_buffer_screen_orientation = 3;
+uint8_t tb_buffer_chosenTextSize = 2;
+
 #include <TinyGPS++.h>
 
 // OTA updates start
@@ -50,6 +71,14 @@ const bool enableNavigationTargeting=true;
 const bool enableRecentCourseCalculation=true;
 bool enableGlobalUptimeDisplay=false;      // adds a timer to compass heading display so can see if a crash/reboot has happened
 bool enableWifiAtStartup=false;
+
+bool otaActiveListening=false;   // OTA updates toggle
+bool otaFirstInit=false;         // Start OTA at boot
+
+bool enableESPNow=true;         // 
+bool ESPNowActive=false;         // can be toggled through interface.
+
+void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 
 // compilation switches
 
@@ -107,8 +136,6 @@ uint8_t telemetry_message_count=0;
 
 #define USB_SERIAL Serial
 
-bool otaActiveListening=false;   // OTA updates toggle
-bool otaFirstInit=false;
 const char* ssid_not_connected = "-";
 const char* ssid_connected = ssid_not_connected;
 
@@ -446,6 +473,12 @@ void setup()
 {
   M5.begin();
   
+  M5.Lcd.setTextSize(tb_buffer_chosenTextSize);
+
+  tb_display_init(tb_buffer_screen_orientation,M5.Lcd.textsize);  // MBJMBJ - change this
+  tb_display_print_String("Mercator Origins - Text Buffer Enabled\n");
+  delay(1000);
+
   if (enableIMUSensor)
   {
     M5.Imu.Init();
@@ -2750,6 +2783,7 @@ void printTime()
 }
 
 
+
 void toggleOTAActive()
 {
    M5.Lcd.fillScreen(TFT_ORANGE);
@@ -2788,6 +2822,30 @@ void toggleOTAActive()
    }  
 
    M5.Lcd.fillScreen(TFT_BLACK);
+}
+
+void toggleESPNowActive()
+{
+  if (enableESPNow)
+  {
+    if (ESPNowActive == false)
+    {
+      if (otaActiveListening)
+        toggleOTAActive();
+      
+      if (WiFi.status() == WL_CONNECTED)
+        toggleWiFiActive();
+    
+      connectESPNow();
+      ESPNowActive = true;
+    }
+    else
+    {
+      // disconnect ESPNow;
+      TeardownESPNow();  
+      ESPNowActive = false;
+    }
+  }
 }
 
 void toggleWiFiActive()
@@ -2887,6 +2945,21 @@ void fadeToBlackAndShutdown()
   }
 
   M5.Axp.PowerOff(); 
+}
+
+bool connectESPNow()
+{  
+  //Set device in STA mode to begin with
+  WiFi.mode(WIFI_STA);
+  Serial.println("ESPNow/Basic/Master Example");
+  // This is the mac address of the Master in Station Mode
+  Serial.print("STA MAC: "); Serial.println(WiFi.macAddress());
+  // Init ESPNow with a fallback logic
+  InitESPNow();
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnESPNowDataSent);
+  return true;
 }
 
 bool connectWiFiNoOTA(const char* _ssid, const char* _password, const char* label, uint32_t timeout)
@@ -3308,3 +3381,223 @@ void sendLocationByEmail()
   
 }
 #endif
+
+// Init ESP Now with fallback
+void InitESPNow() {
+  WiFi.disconnect();
+  if (esp_now_init() == ESP_OK) {
+    Serial.println("ESPNow Init Success");
+    ESPNowActive=true;
+  }
+  else {
+    Serial.println("ESPNow Init Failed");
+    // Retry InitESPNow, add a counte and then restart?
+    // InitESPNow();
+    // or Simply Restart
+    ESP.restart();
+  }
+}
+
+bool TeardownESPNow() 
+{
+  bool result=false;
+
+  if (enableESPNow && ESPNowActive)
+  {
+    WiFi.disconnect();
+    ESPNowActive=false;
+    result=true;
+  }
+  return result;
+}
+
+
+
+char ESPNowDiagBuffer[256];
+
+// callback when data is sent from Master to Slave
+void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.print("Last Packet Sent to: "); Serial.println(macStr);
+  Serial.print("Last Packet Send Status: "); 
+
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+
+  if (status == ESP_NOW_SEND_SUCCESS)
+  {
+    ESPNowMessagesDelivered++;   
+    sprintf(ESPNowDiagBuffer,"Del Ok %hu ",ESPNowMessagesDelivered);
+  }
+  else
+  {
+    ESPNowMessagesFailedToDeliver++;
+    sprintf(ESPNowDiagBuffer,"Del Fail %hu ",ESPNowMessagesFailedToDeliver);
+  }
+  
+  tb_display_print_String(ESPNowDiagBuffer);
+}
+
+
+// Scan for slaves in AP mode
+void ESPNowScanForSlave() {
+  int8_t scanResults = WiFi.scanNetworks();
+  // reset on each scan
+  bool slaveFound = 0;
+  memset(&ESPNow_slave, 0, sizeof(ESPNow_slave));
+
+  Serial.println("");
+  if (scanResults == 0) {
+    Serial.println("No WiFi devices in AP Mode found");
+  } else {
+    Serial.print("Found "); Serial.print(scanResults); Serial.println(" devices ");
+    for (int i = 0; i < scanResults; ++i) {
+      // Print SSID and RSSI for each device found
+      String SSID = WiFi.SSID(i);
+      int32_t RSSI = WiFi.RSSI(i);
+      String BSSIDstr = WiFi.BSSIDstr(i);
+
+      if (ESPNOW_PRINTSCANRESULTS) {
+        Serial.print(i + 1);
+        Serial.print(": ");
+        Serial.print(SSID);
+        Serial.print(" (");
+        Serial.print(RSSI);
+        Serial.print(")");
+        Serial.println("");
+      }
+      delay(10);
+      // Check if the current device starts with `Slave`
+      if (SSID.indexOf("Slave") == 0) {
+        // SSID of interest
+        Serial.println("Found a Slave.");
+        Serial.print(i + 1); Serial.print(": "); Serial.print(SSID); Serial.print(" ["); Serial.print(BSSIDstr); Serial.print("]"); Serial.print(" ("); Serial.print(RSSI); Serial.print(")"); Serial.println("");
+        // Get BSSID => Mac Address of the Slave
+        int mac[6];
+        if ( 6 == sscanf(BSSIDstr.c_str(), "%x:%x:%x:%x:%x:%x",  &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5] ) ) {
+          for (int ii = 0; ii < 6; ++ii ) {
+            ESPNow_slave.peer_addr[ii] = (uint8_t) mac[ii];
+          }
+        }
+
+        ESPNow_slave.channel = ESPNOW_CHANNEL; // pick a channel
+        ESPNow_slave.encrypt = 0; // no encryption
+
+        slaveFound = 1;
+        // we are planning to have only one slave in this example;
+        // Hence, break after we find one, to be a bit efficient
+        break;
+      }
+    }
+  }
+
+  if (slaveFound) {
+    Serial.println("Slave Found, processing..");
+//    tb_display_print_String("Slave Found, processing...");
+  } else {
+    Serial.println("Slave Not Found, trying again.");
+  //  tb_display_print_String("No Slave, trying again.");
+  }
+
+  // clean up ram
+  WiFi.scanDelete();
+}
+
+// Check if the slave is already paired with the master.
+// If not, pair the slave with master
+bool ESPNowManageSlave() {
+  if (ESPNow_slave.channel == ESPNOW_CHANNEL) {
+    if (ESPNOW_DELETEBEFOREPAIR) {
+      ESPNowDeletePeer();
+    }
+
+    Serial.print("Slave Status: ");
+    // check if the peer exists
+    bool exists = esp_now_is_peer_exist(ESPNow_slave.peer_addr);
+    if ( exists) {
+      // Slave already paired.
+      Serial.println("Already Paired");
+      return true;
+    } else {
+      // Slave not paired, attempt pair
+      esp_err_t addStatus = esp_now_add_peer(&ESPNow_slave);
+      if (addStatus == ESP_OK) {
+        // Pair success
+        Serial.println("Pair success");
+        return true;
+      } else if (addStatus == ESP_ERR_ESPNOW_NOT_INIT) {
+        // How did we get so far!!
+        Serial.println("ESPNOW Not Init");
+        return false;
+      } else if (addStatus == ESP_ERR_ESPNOW_ARG) {
+        Serial.println("Invalid Argument");
+        return false;
+      } else if (addStatus == ESP_ERR_ESPNOW_FULL) {
+        Serial.println("Peer list full");
+        return false;
+      } else if (addStatus == ESP_ERR_ESPNOW_NO_MEM) {
+        Serial.println("Out of memory");
+        return false;
+      } else if (addStatus == ESP_ERR_ESPNOW_EXIST) {
+        Serial.println("Peer Exists");
+        return true;
+      } else {
+        Serial.println("Not sure what happened");
+        return false;
+      }
+    }
+  } else {
+    // No slave found to process
+    Serial.println("No Slave found to process");
+    return false;
+  }
+}
+
+void ESPNowDeletePeer() {
+  esp_err_t delStatus = esp_now_del_peer(ESPNow_slave.peer_addr);
+  Serial.print("Slave Delete Status: ");
+  if (delStatus == ESP_OK) {
+    // Delete success
+    Serial.println("Success");
+  } else if (delStatus == ESP_ERR_ESPNOW_NOT_INIT) {
+    // How did we get so far!!
+    Serial.println("ESPNOW Not Init");
+  } else if (delStatus == ESP_ERR_ESPNOW_ARG) {
+    Serial.println("Invalid Argument");
+  } else if (delStatus == ESP_ERR_ESPNOW_NOT_FOUND) {
+    Serial.println("Peer not found.");
+  } else {
+    Serial.println("Not sure what happened");
+  }
+}
+
+uint8_t ESPNow_data_to_send = 33;
+
+void ESPNowSendData() {
+  ESPNow_data_to_send++;
+  
+  if (ESPNow_data_to_send == 128)
+    ESPNow_data_to_send = 33;
+    
+  const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+  Serial.print("Sending: "); Serial.println(ESPNow_data_to_send);
+  esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+  Serial.print("Send Status: ");
+  if (result == ESP_OK) {
+    Serial.println("Success");
+  } else if (result == ESP_ERR_ESPNOW_NOT_INIT) {
+    // How did we get so far!!
+    Serial.println("ESPNOW not Init.");
+  } else if (result == ESP_ERR_ESPNOW_ARG) {
+    Serial.println("Invalid Argument");
+  } else if (result == ESP_ERR_ESPNOW_INTERNAL) {
+    Serial.println("Internal Error");
+  } else if (result == ESP_ERR_ESPNOW_NO_MEM) {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  } else if (result == ESP_ERR_ESPNOW_NOT_FOUND) {
+    Serial.println("Peer not found.");
+  } else {
+    Serial.println("Not sure what happened");
+  }
+}
