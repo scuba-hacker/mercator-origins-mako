@@ -140,6 +140,10 @@ bool setTweetEmergencyNowFlag = false;
 const uint8_t telemetry_send_full_message_duty_cycle = 1;
 uint8_t telemetry_message_count = 0;
 
+const uint32_t console_screen_refresh_minimum_interval = 500; // milliseconds
+uint32_t lastConsoleScreenRefresh = 0;
+bool requestConsoleScreenRefresh = false;
+
 #define USB_SERIAL Serial
 
 const char* ssid_not_connected = "-";
@@ -155,6 +159,7 @@ const uint32_t showLatLongHoldDuration = 5000;
 char uplink_preamble_pattern[] = "MBJAEJ";
 char uplinkTestMessages[][6] = {"MSG0 ", "MSG1 ", "MSG2 ", "MSG3 "};
 char newWayMarkerLabel[2];
+char directionMetricLabel[2];
 
 // I2C and framework
 #include <Wire.h>                   // I2C framework
@@ -187,6 +192,19 @@ char shortTurnAround[] = "TA";
 char shortUnknownMarker[] = "UM";
 char shortUndefinedMarker[] = "UD";
 
+char shortCompassHeadingDirectionMetric[] ="CH";
+char shortJourneyCourseDirectionMetric[] ="JC";
+char shortUndefinedDirectionMetric[] ="JC";
+
+char displayLabel[] = "??";
+
+char navCompassDisplayLabel[] = "CM";
+char navCourseDisplayLabel[] = "CO";
+char locationDisplayLabel[] = "LO";
+char journeyDisplayLabel[] = "JO";
+char showLatLongDisplayLabel[] = "LL";
+char audioTestDisplayLabel[] = "AT";
+char undefinedDisplayLabel[] = "??";
 
 class navigationTarget
 {
@@ -253,7 +271,7 @@ uint32_t lastWayMarkerChangeTimestamp = 0;
 e_way_marker lastWayMarker = BLACKOUT_MARKER;    // SHOULD BE ENUM
 e_way_marker newWayMarker = BLACKOUT_MARKER;     // SHOULD BE ENUM
 bool blackout_journey_no_movement = true;
-uint8_t journey_activity_count = 0;
+uint8_t activity_count = 0;
 void refreshDirectionGraphic(float directionOfTravel, float headingToTarget);
 
 e_direction_metric directionMetric = COMPASS_HEADING;
@@ -266,7 +284,7 @@ uint32_t passedChecksumCount = 0;
 
 uint8_t graphicsCount = 0;
 
-char journey_activity_indicator[] = "\\|/-";
+char activity_indicator[] = "\\|/-";
 
 enum e_mako_displays {NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, SHOW_LAT_LONG_DISPLAY, AUDIO_TEST_DISPLAY};
 const e_mako_displays first_display_rotation = NAV_COMPASS_DISPLAY;
@@ -290,6 +308,7 @@ void switchToNextDisplayToShow()
   }
 
   M5.Lcd.fillScreen(TFT_BLACK);
+  requestConsoleScreenRefresh=true;
 }
 
 const uint8_t RED_LED_GPIO = 10;
@@ -303,7 +322,7 @@ double Lat, Lng;
 String  lat_str , lng_str;
 int satellites = 0;
 double b, c = 0;
-int nofix_byte_loop_count = 0;
+int power_up_no_fix_byte_loop_count = 0;
 
 hw_timer_t *timer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
@@ -812,10 +831,6 @@ void loop()
   if (autoShutdownOnNoUSBPower)
     shutdownIfUSBPowerOff();
 
-  //  if(isMagnetPresentHallSensor())
-  //    esp_restart();
-
-  //  digitalWrite(RED_LED_GPIO, digitalRead(RED_LED_GPIO));
   /*
     testForDualButtonPressAutoShutdownChange();
 
@@ -827,6 +842,49 @@ void loop()
       return;
     }
   */
+
+  bool msgProcessed = processGPSMessageIfAvailable();
+  
+  if (!msgProcessed)
+  {
+    // no gps message received, do a manual refresh of sensors and screen
+    acquireAllSensorReadings(); // compass, IMU, Depth, Temp, Humidity, Pressure
+
+    if (millis() > lastConsoleScreenRefresh + console_screen_refresh_minimum_interval)
+    {
+      refreshConsoleScreen();
+      lastConsoleScreenRefresh = millis();
+    }
+  }
+  else
+  {
+     lastConsoleScreenRefresh = millis();
+  }
+
+  checkForButtonPresses();
+
+  if (requestConsoleScreenRefresh)
+  {
+    requestConsoleScreenRefresh = false;
+    refreshConsoleScreen();
+    lastConsoleScreenRefresh = millis();
+  }
+
+  refreshGlobalStatusDisplay();
+
+#ifdef INCLUDE_QUBITRO_AT_COMPILE_TIME
+// This isn't included in the build or enabled in production.
+  if (connectToQubitro)
+    uploadTelemetryToQubitro();
+#endif
+}
+
+
+
+bool processGPSMessageIfAvailable()
+{ 
+  bool result = (float_serial.available() > 0);
+
   while (float_serial.available() > 0)
   {
     if (enableButtonTestMode)
@@ -841,7 +899,6 @@ void loop()
 
     if (gps.encode(nextByte))
     {
-
       if (gps.location.isValid())
       {
         uint32_t newFixCount = gps.sentencesWithFix();
@@ -860,488 +917,44 @@ void loop()
           latestFixTimeStamp = millis();
         }
 
-        if (nofix_byte_loop_count > -1)
+        if (power_up_no_fix_byte_loop_count > -1)
         {
           // clear the onscreen counter that increments whilst attempting to get first valid location
-          nofix_byte_loop_count = -1;
+          power_up_no_fix_byte_loop_count = -1;
           M5.Lcd.fillScreen(TFT_BLACK);
         }
 
         if (newPassedChecksum <= passedChecksumCount)
         {
           // incomplete message received, continue reading bytes, don't update display.
-          return;
+          // continue reading bytes, 
+//          return false;     // this was a straight return to terminate the loop() function before.
         }
         else
         {
           passedChecksumCount = newPassedChecksum;
-        }
 
-        M5.Lcd.setCursor(0, 0);
-
-        Lat = gps.location.lat();
-        lat_str = String(Lat , 7);
-        Lng = gps.location.lng();
-        lng_str = String(Lng , 7);
-        satellites = gps.satellites.value();
-
-        if (enableRecentCourseCalculation)
-        {
-          if (millis() - last_journey_commit_time > journey_calc_period)
-          {
-            double distanceTravelled = gps.distanceBetween(Lat, Lng, journey_lat, journey_lng);
-
-            if (distanceTravelled > journey_min_dist)
-            {
-              // Must have travelled min distance and min period elapsed since last waypoint.
-              // store the course travelled since last waypoint.
-              journey_course = gps.courseTo(journey_lat, journey_lng, Lat, Lng);
-              if (journey_course == 360)
-                journey_course = 0;
-              journey_distance = distanceTravelled;
-
-              if (journey_course >= 359.5) journey_course = 0;
-
-              if (journey_distance > 50) journey_distance = 0;    // correct for initial sample
-
-              last_journey_commit_time = millis();
-              journey_lat = Lat;
-              journey_lng = Lng;
-              journey_activity_count = (journey_activity_count + 1) % 4;
-            }
-          }
-        }
-        else
-        {
-          journey_course = 1;
-          journey_distance = 1.1;
-        }
-
-
-        if  (millis() - journey_clear_period > last_journey_commit_time || journey_distance == 0)
-          blackout_journey_no_movement = true;
-        else
-          blackout_journey_no_movement = false;
-
-        if (directionMetric == COMPASS_HEADING)
-          blackout_journey_no_movement = false;
-
-
-        if (enableNavigationTargeting)
-        {
-          heading_to_target = gps.courseTo(Lat, Lng, nextTarget->_lat, nextTarget->_long);
-          distance_to_target = gps.distanceBetween(Lat, Lng, nextTarget->_lat, nextTarget->_long);
-        }
-        else
-        {
-          heading_to_target = 1.0;
-          distance_to_target = 1.1;
-        }
-
-        if (distance_to_target > 10000000.0)  // fake data received from float for No GPS.
-        {
-          // NO GPS Fake data from M5 53
-          if (GPS_status != GPS_NO_GPS_LIVE_IN_FLOAT)
-          {
-            GPS_status = GPS_NO_GPS_LIVE_IN_FLOAT;
-            M5.Lcd.fillScreen(TFT_BLACK);
-          }
-        }
-        else if (distance_to_target > 7000000.0) // fake data received from float for No fix yet.
-        {
-          // NO Fix Fake data from M5 53
-          if (GPS_status != GPS_NO_FIX_FROM_FLOAT)
-          {
-            GPS_status = GPS_NO_FIX_FROM_FLOAT;
-            M5.Lcd.fillScreen(TFT_BLACK);
-          }
-        }
-        else
-        {
-          if (GPS_status != GPS_FIX_FROM_FLOAT)
-          {
-            GPS_status = GPS_FIX_FROM_FLOAT;
-            M5.Lcd.fillScreen(TFT_BLACK);
-          }
-        }
-
-        //        getSmoothedMagHeading(magnetic_heading);
-
-        // Don't use smooth, show sample directly every 250 ms
-        if (millis() > s_lastCompassDisplayRefresh + s_compassHeadingUpdateRate)
-        {
-          s_lastCompassDisplayRefresh = millis();
-
-          if (compassAvailable)
-          {
-            if (enableTiltCompensation)
-            {
-              getMagHeadingTiltCompensated(magnetic_heading);
-            }
-            else
-            {
-              getMagHeadingNotTiltCompensated(magnetic_heading);
-            }
-          }
-          else
-          {
-            magnetic_heading = 0;
-          }
-
-          getM5ImuSensorData(&imu_gyro_vector.x, &imu_gyro_vector.y, &imu_gyro_vector.z,
-                             &imu_lin_acc_vector.x, &imu_lin_acc_vector.y, &imu_lin_acc_vector.z,
-                             &imu_rot_acc_vector.x, &imu_rot_acc_vector.y, &imu_rot_acc_vector.z,
-                             &imu_temperature);
-        }
-
-        if (millis() > s_lastTempHumidityDisplayRefresh + s_tempHumidityUpdateRate)
-        {
-          s_lastTempHumidityDisplayRefresh = millis();
-          //           getTempAndHumidity(humidity, temperature);
-          getTempAndHumidityAndAirPressureBME280(humidity, temperature, air_pressure, pressure_altitude);
-          getDepth(depth, water_temperature, water_pressure, depth_altitude);
-        }
-
-        if (display_to_show == NAV_COURSE_DISPLAY ||
-            display_to_show == NAV_COMPASS_DISPLAY)
-        {
-          directionMetric = (display_to_show == NAV_COURSE_DISPLAY ? JOURNEY_COURSE : COMPASS_HEADING);
-
-          // Target Course and distance is shown in Green
-          // Journey course and distance over last 10 seconds shown in Red
-          // HDOP quality shown in top right corner as square block. Blue best at <=1.
-          // Sat count shown underneath HDOP. Red < 4, Orange < 6, Yellow < 10, Blue 10+
-
-          M5.Lcd.setRotation(0);
-          M5.Lcd.setTextSize(5);
-
-          uint16_t x = 0, y = 0, degree_offset = 0, cardinal_offset = 0, hdop = 0, metre_offset = 0;
-
-          if (GPS_status == GPS_NO_GPS_LIVE_IN_FLOAT)
-          {
-            M5.Lcd.setCursor(5, 0);
-            M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
-
-            M5.Lcd.print(" NO\n");
-            M5.Lcd.setCursor(21, 48);
-            M5.Lcd.print("GPS");
-
-            M5.Lcd.setTextSize(2);
-          }
-          else if (GPS_status == GPS_NO_FIX_FROM_FLOAT)
-          {
-            M5.Lcd.setCursor(5, 0);
-            M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
-
-            M5.Lcd.print(" NO\n");
-            M5.Lcd.setCursor(21, 48);
-            M5.Lcd.print("FIX");
-
-            M5.Lcd.setTextSize(2);
-          }
-          else if (GPS_status == GPS_FIX_FROM_FLOAT)
-          {
-            M5.Lcd.setCursor(5, 0);
-            M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-
-            // Display Green heading to target at top with degrees sign suffix
-            M5.Lcd.printf("%3.0f", heading_to_target);
-            M5.Lcd.setTextSize(2);
-            degree_offset = -2;
-            x = M5.Lcd.getCursorX();
-            y = M5.Lcd.getCursorY();
-            M5.Lcd.setCursor(x, y + degree_offset);
-            M5.Lcd.print("o ");
-
-            // Display Cardinal underneath degrees sign
-            cardinal_offset = 21;
-            M5.Lcd.setCursor(x, y + cardinal_offset);
-            M5.Lcd.printf("%s ", getCardinal(heading_to_target).c_str());
-
-            // Display HDOP signal quality as small coloured dot
-            hdop = gps.hdop.hdop();
-            if (hdop > 10)
-              M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
-            else if (hdop > 5)
-              M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
-            else if (hdop > 1)
-              M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
-            else
-              M5.Lcd.setTextColor(TFT_BLUE, TFT_BLACK);
-
-            M5.Lcd.setTextSize(5);
-            M5.Lcd.setCursor(x + 10, y - 25);
-            M5.Lcd.print(".");
-
-            // Display number of satellites
-            M5.Lcd.setTextSize(2);
-            M5.Lcd.setCursor(x + 8, y + 40);
-            if (satellites < 4)
-              M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
-            else if (hdop < 6)
-              M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
-            else if (hdop < 10)
-              M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
-            else
-              M5.Lcd.setTextColor(TFT_BLUE, TFT_BLACK);
-            M5.Lcd.printf("%2lu", satellites);
-
-            // Display distance to target in metres, with by 'm' suffix
-            M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-            M5.Lcd.setCursor(x, y);
-            M5.Lcd.setTextSize(5);
-
-            if (distance_to_target < 1000)      //     (less than 1km)
-            {
-              M5.Lcd.printf("\n%3.0f", distance_to_target);
-              M5.Lcd.setTextSize(3);
-
-              x = M5.Lcd.getCursorX();
-              y = M5.Lcd.getCursorY();
-
-              metre_offset = 14;
-              M5.Lcd.setCursor(x, y + metre_offset);
-              M5.Lcd.print("m");
-
-              // Clear any extra line used by distance where distance > 999m and wrap has occurred
-              M5.Lcd.setTextSize(0);
-              M5.Lcd.print("\n\n\n\n\n");
-            }
-            else
-            {
-              M5.Lcd.printf("\n*%3d", ((uint32_t)distance_to_target) % 1000);
-            }
-
-          }
-
-          float directionOfTravel = (directionMetric == JOURNEY_COURSE ? journey_course : magnetic_heading);
-
-          // Display Journey Course with degrees suffix
-          // this is the direction travelled in last x seconds
-          // Black out the Journey Course if no recent movement
-          M5.Lcd.setTextSize(5);
-
-          if (directionMetric == JOURNEY_COURSE)
-          {
-            M5.Lcd.setTextColor((blackout_journey_no_movement ? TFT_BLACK : TFT_RED), TFT_BLACK);
-          }
-          else
-          {
-            // never black out mag compass heading
-            M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
-          }
-
-          M5.Lcd.printf("%3.0f", directionOfTravel);
-
-          x = M5.Lcd.getCursorX();
-          y = M5.Lcd.getCursorY();
-
-          M5.Lcd.setTextSize(2);
-          M5.Lcd.setCursor(x, y + degree_offset);
-
-          if (directionMetric == JOURNEY_COURSE && GPS_status == GPS_FIX_FROM_FLOAT)
-          {
-            // Display small rotating line character to indicate a new journey datapoint has been recorded
-            M5.Lcd.printf("o %c", journey_activity_indicator[journey_activity_count]);
-
-            // Display Cardinal underneath degrees sign
-            cardinal_offset = 21;
-            M5.Lcd.setCursor(x, y + cardinal_offset);
-            M5.Lcd.printf("%s ", getCardinal(directionOfTravel).c_str());
-
-            // Display distance travelled during last journey course measurement with 'm' suffix
-            M5.Lcd.setCursor(x, y);
-            M5.Lcd.setTextSize(5);
-            M5.Lcd.printf("\n%3.0f", journey_distance);
-
-            M5.Lcd.setTextSize(3);
-
-            x = M5.Lcd.getCursorX();
-            y = M5.Lcd.getCursorY();
-
-            M5.Lcd.setCursor(x, y + metre_offset);
-            M5.Lcd.print("m");
-            M5.Lcd.setTextSize(5);
-            refreshDirectionGraphic(directionOfTravel, heading_to_target);
-            refreshDepthDisplay();
-          }
-          else if (directionMetric == COMPASS_HEADING)
-          {
-            // Display degrees
-            M5.Lcd.printf("o ");
-
-            // Display Cardinal underneath degrees sign
-            const uint16_t cardinal_offset = 21;
-            M5.Lcd.setCursor(x, y + cardinal_offset);
-            M5.Lcd.printf("%s ", getCardinal(directionOfTravel).c_str());
-
-            // Display temp and humidity
-            M5.Lcd.setCursor(x, y);
-            M5.Lcd.setTextSize(2);
-            M5.Lcd.printf("\n\n\n%2.1f", temperature);
-
-            x = M5.Lcd.getCursorX();
-            y = M5.Lcd.getCursorY();
-
-            const uint16_t temp_degrees_offset = -2;
-            M5.Lcd.setCursor(x + 3, y + temp_degrees_offset);
-            M5.Lcd.setTextSize(0);
-            M5.Lcd.printf("o ", temperature);
-            M5.Lcd.setTextSize(2);
-            M5.Lcd.printf("C %3.0f%%", humidity);
-
-            if (GPS_status == GPS_FIX_FROM_FLOAT)
-              refreshDirectionGraphic(directionOfTravel, heading_to_target);
-
-            refreshDepthDisplay();
-
-            blackout_journey_no_movement = false;
-          }
-          else
-          {
-
-          }
-        }
-        else if (display_to_show == AUDIO_TEST_DISPLAY)
-        {
-          M5.Lcd.setRotation(1);
-          M5.Lcd.setTextSize(2);
-
-          M5.Lcd.setTextColor(TFT_BLACK, TFT_GREEN);
-          M5.Lcd.println("Toggle ESPNow: Top 10s\n");
-          M5.Lcd.println("Start/Stop Play: Side 0.5s\n");
-          M5.Lcd.println("Vol cycle: Side 2s\n");
-          M5.Lcd.println("Next Track: Side 5s\n");
-        }
-        else if (display_to_show == SHOW_LAT_LONG_DISPLAY)
-        {
-          M5.Lcd.setRotation(1);
-          M5.Lcd.setTextSize(3);
-          /*
-                  if (setTweetEmergencyNowFlag == true)
-                  {
-                    M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
-                    M5.Lcd.printf("SOS TWEET SENT\n", Lat);
-                    sleep(3000);
-                  }
-                  else
-                  {
-                    M5.Lcd.setTextColor(TFT_BLUE, TFT_YELLOW);
-                    M5.Lcd.printf(" TWEET SENT! \n", Lat);
-                  }
-          */
-
-          M5.Lcd.setTextColor(TFT_BLACK, TFT_GREEN);
-          M5.Lcd.printf("Location Here\n");
-          M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-          M5.Lcd.printf("La:%.5f\n", Lat);
-          M5.Lcd.printf("Lo:%.5f\n", Lng);
-          M5.Lcd.printf("%02d:%02d:%02d\n", gps.time.hour(), gps.time.minute(), gps.time.second());
-          M5.Lcd.printf("%02d/%02d/%02d\n", gps.date.day(), gps.date.month(), gps.date.year());
-
-          if (millis() > showLatLongStartTime + showLatLongHoldDuration)
-          {
-            showLatLongStartTime = 0;
-            display_to_show = NAV_COMPASS_DISPLAY;
-          }
-        }
-        else if (display_to_show == LOCATION_DISPLAY)
-        {
-          M5.Lcd.setRotation(1);
-          M5.Lcd.setTextSize(2);
-          M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-
-          M5.Lcd.setCursor(5, 0);
-          M5.Lcd.printf("La:%.5f   ", Lat);
-          M5.Lcd.setCursor(5, 17);
-          M5.Lcd.printf("Lo:%.5f   ", Lng);
-          M5.Lcd.setCursor(5, 34);
-
-          M5.Lcd.printf("Depth:%.0f m  ", depth);
-          M5.Lcd.setCursor(5, 51);
-          M5.Lcd.printf("Water P:%.1f% Bar", water_pressure);
-
-          M5.Lcd.setCursor(5, 68);
-          M5.Lcd.printf("T:%s", nextTarget->_label);
-
-          M5.Lcd.setCursor(5, 85);
-          if (WiFi.status() == WL_CONNECTED)
-            M5.Lcd.printf("IP: %s", WiFi.localIP().toString());
-          else
-            M5.Lcd.printf("IP: No WiFi");
-
-          M5.Lcd.setCursor(5, 102);
-          M5.Lcd.printf("crs: %.0f d: %.0f    ", heading_to_target, distance_to_target);
-        }
-        else if (display_to_show == JOURNEY_DISPLAY)
-        {
-          M5.Lcd.setRotation(1);
-          M5.Lcd.setTextSize(2);
-          M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-
-          M5.Lcd.setCursor(5, 0);
-          M5.Lcd.printf("V:%.2fV I:%.0fmA  ", M5.Axp.GetVBusVoltage(), M5.Axp.GetVBusCurrent());
-          M5.Lcd.setCursor(5, 17);
-
-
-          M5.Lcd.printf("OTA:%hu Uplink:%hu", otaActiveListening,  enableUplinkComms);
-
-          M5.Lcd.setCursor(5, 34);
-          M5.Lcd.printf("Wifi:%hu %s", WiFi.status() == WL_CONNECTED, ssid_connected);
-          M5.Lcd.setCursor(5, 51);
-          M5.Lcd.printf("Fix:%lu Up:%lu", fixCount, uplinkMessageCount);
-          M5.Lcd.setCursor(5, 68);
-          M5.Lcd.printf("chk+:%lu chk-:%lu", newPassedChecksum, newFailedChecksum);
-          M5.Lcd.setCursor(5, 85);
-          M5.Lcd.printf("tc:%.0f d:%.0f  ", heading_to_target, distance_to_target);
-          M5.Lcd.setCursor(5, 102);
-          M5.Lcd.printf("%02d:%02d:%02d UTC", gps.time.hour(), gps.time.minute(), gps.time.second());
-          M5.Lcd.setCursor(5, 119);
-          M5.Lcd.printf("Uptime:%.1f", ((float)millis() / 1000.0));
-        }
-        else
-        {
-          M5.Lcd.setCursor(5, 17);
-          M5.Lcd.printf("NULL DISPLAY");
-        }
-
-        // overlay count up / power on time in seconds.
-        if (enableGlobalUptimeDisplay)
-        {
-          M5.Lcd.setCursor(0, SCREEN_WIDTH - 15);
-          M5.Lcd.setRotation(1);
-          M5.Lcd.setTextFont(1);
-          M5.Lcd.setTextSize(2);
-          M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
-          M5.Lcd.printf(" Uptime: %.1f ", ((float)millis() / 1000.0));
-        }
-
-        checkForButtonPresses();
-
-        if (enableUplinkComms)
-        {
-          if (uplinkMessageCount % telemetry_send_full_message_duty_cycle == 0)
-          {
-            fp_sendUplinkMessage();
-          }
-          else
-          {
-            sendBasicWithDepthUplinkTelemetryMessage();
-            //            sendBasicUplinkTelemetryMessage();
-          }
-
-          uplinkMessageCount++;
+          // At this point a new lat/long fix has been received and is available.
+          refreshAndCalculatePositionalAttributes();
+
+          acquireAllSensorReadings(); // compass, IMU, Depth, Temp, Humidity, Pressure
+  
+          refreshConsoleScreen();
+  
+          checkForButtonPresses();
+  
+          performUplinkTasks();
         }
       }
       else
       {
         // get location invalid if there is no new fix to read before 1 second is up.
-        if (nofix_byte_loop_count > -1)
+        if (power_up_no_fix_byte_loop_count > -1)
         {
           // Bytes are being received but no valid location fix has been seen since startup
           // Increment byte count shown until first fix received.
           M5.Lcd.setCursor(50, 90);
-          M5.Lcd.printf("%d", nofix_byte_loop_count++);
+          M5.Lcd.printf("%d", power_up_no_fix_byte_loop_count++);
         }
       }
     }
@@ -1350,38 +963,137 @@ void loop()
       // no byte received.
     }
   }
-
-  checkForButtonPresses();
-
-  if (nofix_byte_loop_count > 0)
-  {
-    // No fix only shown on first acquisition.
-    M5.Lcd.setCursor(55, 5);
-    M5.Lcd.setTextSize(4);
-    M5.Lcd.printf("No Fix\n");
-    M5.Lcd.setCursor(110, 45);
-    M5.Lcd.printf("%c", journey_activity_indicator[(++journey_activity_count) % 4]);
-    delay(250); // no fix wait
-  }
-  else if (nofix_byte_loop_count != -1)
-  {
-    // No GPS is reported when no bytes have ever been received on the UART.
-    // Once messages start being received, this is blocked as it is normal
-    // to have gaps in the stream. There is no indication if GPS stream hangs
-    // after first byte received, eg no bytes within 10 seconds.
-    M5.Lcd.setCursor(55, 5);
-    M5.Lcd.setTextSize(4);
-    M5.Lcd.printf("No GPS\n");
-    M5.Lcd.setCursor(110, 45);
-    M5.Lcd.printf("%c", journey_activity_indicator[(++journey_activity_count) % 4]);
-    delay(250); // no fix wait
-  }
-
-#ifdef INCLUDE_QUBITRO_AT_COMPILE_TIME
-  if (connectToQubitro)
-    uploadTelemetryToQubitro();
-#endif
+  
+  return result;
 }
+
+void refreshAndCalculatePositionalAttributes()
+{
+  Lat = gps.location.lat();
+  lat_str = String(Lat , 7);
+  Lng = gps.location.lng();
+  lng_str = String(Lng , 7);
+  satellites = gps.satellites.value();
+
+  if (enableRecentCourseCalculation)
+  {
+    if (millis() - last_journey_commit_time > journey_calc_period)
+    {
+      double distanceTravelled = gps.distanceBetween(Lat, Lng, journey_lat, journey_lng);
+
+      if (distanceTravelled > journey_min_dist)
+      {
+        // Must have travelled min distance and min period elapsed since last waypoint.
+        // store the course travelled since last waypoint.
+        journey_course = gps.courseTo(journey_lat, journey_lng, Lat, Lng);
+        if (journey_course == 360)
+          journey_course = 0;
+        journey_distance = distanceTravelled;
+
+        if (journey_course >= 359.5) journey_course = 0;
+
+        if (journey_distance > 50) journey_distance = 0;    // correct for initial sample
+
+        last_journey_commit_time = millis();
+        journey_lat = Lat;
+        journey_lng = Lng;
+        activity_count = (activity_count + 1) % 4;
+      }
+    }
+  }
+  else
+  {
+    journey_course = 1;
+    journey_distance = 1.1;
+  }
+
+  if  (millis() - journey_clear_period > last_journey_commit_time || journey_distance == 0)
+    blackout_journey_no_movement = true;
+  else
+    blackout_journey_no_movement = false;
+
+  if (directionMetric == COMPASS_HEADING)
+    blackout_journey_no_movement = false;
+
+  if (enableNavigationTargeting)
+  {
+    heading_to_target = gps.courseTo(Lat, Lng, nextTarget->_lat, nextTarget->_long);
+    distance_to_target = gps.distanceBetween(Lat, Lng, nextTarget->_lat, nextTarget->_long);
+  }
+  else
+  {
+    heading_to_target = 1.0;
+    distance_to_target = 1.1;
+  }
+
+  if (distance_to_target > 10000000.0)  // fake data received from float for No GPS.
+  {
+    // NO GPS Fake data from M5 53
+    if (GPS_status != GPS_NO_GPS_LIVE_IN_FLOAT)
+    {
+      GPS_status = GPS_NO_GPS_LIVE_IN_FLOAT;
+      M5.Lcd.fillScreen(TFT_BLACK);
+    }
+  }
+  else if (distance_to_target > 7000000.0) // fake data received from float for No fix yet.
+  {
+    // NO Fix Fake data from M5 53
+    if (GPS_status != GPS_NO_FIX_FROM_FLOAT)
+    {
+      GPS_status = GPS_NO_FIX_FROM_FLOAT;
+      M5.Lcd.fillScreen(TFT_BLACK);
+    }
+  }
+  else
+  {
+    if (GPS_status != GPS_FIX_FROM_FLOAT)
+    {
+      GPS_status = GPS_FIX_FROM_FLOAT;
+      M5.Lcd.fillScreen(TFT_BLACK);
+    }
+  }
+}
+
+void acquireAllSensorReadings()
+{        
+  // Don't use smooth, show sample directly every 250 ms
+  //        getSmoothedMagHeading(magnetic_heading);
+  if (millis() > s_lastCompassDisplayRefresh + s_compassHeadingUpdateRate)
+  {
+    s_lastCompassDisplayRefresh = millis();
+
+    if (compassAvailable)
+    {
+      if (enableTiltCompensation)
+      {
+        getMagHeadingTiltCompensated(magnetic_heading);
+      }
+      else
+      {
+        getMagHeadingNotTiltCompensated(magnetic_heading);
+      }
+    }
+    else
+    {
+      magnetic_heading = 0;
+    }
+
+    getM5ImuSensorData(&imu_gyro_vector.x, &imu_gyro_vector.y, &imu_gyro_vector.z,
+                       &imu_lin_acc_vector.x, &imu_lin_acc_vector.y, &imu_lin_acc_vector.z,
+                       &imu_rot_acc_vector.x, &imu_rot_acc_vector.y, &imu_rot_acc_vector.z,
+                       &imu_temperature);
+  }
+
+  if (millis() > s_lastTempHumidityDisplayRefresh + s_tempHumidityUpdateRate)
+  {
+    s_lastTempHumidityDisplayRefresh = millis();
+    //           getTempAndHumidity(humidity, temperature);
+    getTempAndHumidityAndAirPressureBME280(humidity, temperature, air_pressure, pressure_altitude);
+    getDepth(depth, water_temperature, water_pressure, depth_altitude);
+  }
+}
+
+const uint32_t buttonPressDurationToChangeScreen = 50;
 
 void checkForButtonPresses()
 {
@@ -1393,7 +1105,7 @@ void checkForButtonPresses()
     {
       toggleOTAActive();
     }
-    else if (p_primaryButton->wasReleasefor(250))
+    else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))
     {
       switchToNextDisplayToShow();
     }
@@ -1409,7 +1121,7 @@ void checkForButtonPresses()
     {
       toggleUplinkMessageProcessAndSend();
     }
-    else if (p_primaryButton->wasReleasefor(100))  // change display screen
+    else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
     {
       switchToNextDisplayToShow();
     }
@@ -1432,7 +1144,7 @@ void checkForButtonPresses()
     {
       toggleESPNowActive();
     }
-    else if (p_primaryButton->wasReleasefor(100))  // change display screen
+    else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
     {
       switchToNextDisplayToShow();
     }
@@ -1467,7 +1179,7 @@ void checkForButtonPresses()
       setTweetLocationNowFlag = true;
       M5.Lcd.fillScreen(TFT_BLACK);
     }
-    else if (p_primaryButton->wasReleasefor(100))  // change display screen
+    else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
     {
       switchToNextDisplayToShow();
     }
@@ -1498,9 +1210,377 @@ void checkForButtonPresses()
   }
 }
 
+void refreshConsoleScreen()
+{
+
+  if (display_to_show == NAV_COURSE_DISPLAY ||
+      display_to_show == NAV_COMPASS_DISPLAY)
+  {
+    directionMetric = (display_to_show == NAV_COURSE_DISPLAY ? JOURNEY_COURSE : COMPASS_HEADING);
+
+    // Target Course and distance is shown in Green
+    // Journey course and distance over last 10 seconds shown in Red
+    // HDOP quality shown in top right corner as square block. Blue best at <=1.
+    // Sat count shown underneath HDOP. Red < 4, Orange < 6, Yellow < 10, Blue 10+
+
+    M5.Lcd.setRotation(0);
+    M5.Lcd.setTextSize(5);
+    M5.Lcd.setCursor(0, 0);
+
+    uint16_t x = 0, y = 0, degree_offset = 0, cardinal_offset = 0, hdop = 0, metre_offset = 0;
+
+    if (GPS_status == GPS_NO_GPS_LIVE_IN_FLOAT)
+    {
+      M5.Lcd.setCursor(5, 0);
+      M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+
+      M5.Lcd.print(" NO\n");
+      M5.Lcd.setCursor(21, 48);
+      M5.Lcd.print("GPS");
+
+      M5.Lcd.setTextSize(2);
+    }
+    else if (GPS_status == GPS_NO_FIX_FROM_FLOAT)
+    {
+      M5.Lcd.setCursor(5, 0);
+      M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
+
+      M5.Lcd.print(" NO\n");
+      M5.Lcd.setCursor(21, 48);
+      M5.Lcd.print("FIX");
+
+      M5.Lcd.setTextSize(2);
+    }
+    else if (GPS_status == GPS_FIX_FROM_FLOAT)
+    {
+      M5.Lcd.setCursor(5, 0);
+      M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+
+      // Display Green heading to target at top with degrees sign suffix
+      M5.Lcd.printf("%3.0f", heading_to_target);
+      M5.Lcd.setTextSize(2);
+      degree_offset = -2;
+      x = M5.Lcd.getCursorX();
+      y = M5.Lcd.getCursorY();
+      M5.Lcd.setCursor(x, y + degree_offset);
+      M5.Lcd.print("o ");
+
+      // Display Cardinal underneath degrees sign
+      cardinal_offset = 21;
+      M5.Lcd.setCursor(x, y + cardinal_offset);
+      M5.Lcd.printf("%s ", getCardinal(heading_to_target).c_str());
+
+      // Display HDOP signal quality as small coloured dot
+      hdop = gps.hdop.hdop();
+      if (hdop > 10)
+        M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+      else if (hdop > 5)
+        M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
+      else if (hdop > 1)
+        M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+      else
+        M5.Lcd.setTextColor(TFT_BLUE, TFT_BLACK);
+
+      M5.Lcd.setTextSize(5);
+      M5.Lcd.setCursor(x + 10, y - 25);
+      M5.Lcd.print(".");
+
+      // Display number of satellites
+      M5.Lcd.setTextSize(2);
+      M5.Lcd.setCursor(x + 8, y + 40);
+      if (satellites < 4)
+        M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+      else if (hdop < 6)
+        M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
+      else if (hdop < 10)
+        M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+      else
+        M5.Lcd.setTextColor(TFT_BLUE, TFT_BLACK);
+      M5.Lcd.printf("%2lu", satellites);
+
+      // Display distance to target in metres, with by 'm' suffix
+      M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+      M5.Lcd.setCursor(x, y);
+      M5.Lcd.setTextSize(5);
+
+      if (distance_to_target < 1000)      //     (less than 1km)
+      {
+        M5.Lcd.printf("\n%3.0f", distance_to_target);
+        M5.Lcd.setTextSize(3);
+
+        x = M5.Lcd.getCursorX();
+        y = M5.Lcd.getCursorY();
+
+        metre_offset = 14;
+        M5.Lcd.setCursor(x, y + metre_offset);
+        M5.Lcd.print("m");
+
+        // Clear any extra line used by distance where distance > 999m and wrap has occurred
+        M5.Lcd.setTextSize(0);
+        M5.Lcd.print("\n\n\n\n\n");
+      }
+      else
+      {
+        M5.Lcd.printf("\n*%3d", ((uint32_t)distance_to_target) % 1000);
+      }
+
+    }
+
+    float directionOfTravel = (directionMetric == JOURNEY_COURSE ? journey_course : magnetic_heading);
+
+    // Display Journey Course with degrees suffix
+    // this is the direction travelled in last x seconds
+    // Black out the Journey Course if no recent movement
+    M5.Lcd.setTextSize(5);
+
+    if (directionMetric == JOURNEY_COURSE)
+    {
+      M5.Lcd.setTextColor((blackout_journey_no_movement ? TFT_BLACK : TFT_RED), TFT_BLACK);
+    }
+    else
+    {
+      // never black out mag compass heading
+      M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+    }
+
+    M5.Lcd.printf("%3.0f", directionOfTravel);
+
+    x = M5.Lcd.getCursorX();
+    y = M5.Lcd.getCursorY();
+
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(x, y + degree_offset);
+
+    if (directionMetric == JOURNEY_COURSE && GPS_status == GPS_FIX_FROM_FLOAT)
+    {
+      // Display small rotating line character to indicate a new journey datapoint has been recorded
+      M5.Lcd.printf("o %c", activity_indicator[activity_count]);
+
+      // Display Cardinal underneath degrees sign
+      cardinal_offset = 21;
+      M5.Lcd.setCursor(x, y + cardinal_offset);
+      M5.Lcd.printf("%s ", getCardinal(directionOfTravel).c_str());
+
+      // Display distance travelled during last journey course measurement with 'm' suffix
+      M5.Lcd.setCursor(x, y);
+      M5.Lcd.setTextSize(5);
+      M5.Lcd.printf("\n%3.0f", journey_distance);
+
+      M5.Lcd.setTextSize(3);
+
+      x = M5.Lcd.getCursorX();
+      y = M5.Lcd.getCursorY();
+
+      M5.Lcd.setCursor(x, y + metre_offset);
+      M5.Lcd.print("m");
+      M5.Lcd.setTextSize(5);
+      refreshDirectionGraphic(directionOfTravel, heading_to_target);
+      refreshDepthDisplay();
+    }
+    else if (directionMetric == COMPASS_HEADING)
+    {
+      // Display degrees
+      M5.Lcd.printf("o ");
+
+      // Display Cardinal underneath degrees sign
+      const uint16_t cardinal_offset = 21;
+      M5.Lcd.setCursor(x, y + cardinal_offset);
+      M5.Lcd.printf("%s ", getCardinal(directionOfTravel).c_str());
+
+      // Display temp and humidity
+      M5.Lcd.setCursor(x, y);
+      M5.Lcd.setTextSize(2);
+      M5.Lcd.printf("\n\n\n%2.1f", temperature);
+
+      x = M5.Lcd.getCursorX();
+      y = M5.Lcd.getCursorY();
+
+      const uint16_t temp_degrees_offset = -2;
+      M5.Lcd.setCursor(x + 3, y + temp_degrees_offset);
+      M5.Lcd.setTextSize(0);
+      M5.Lcd.printf("o ", temperature);
+      M5.Lcd.setTextSize(2);
+      M5.Lcd.printf("C %3.0f%%", humidity);
+
+      if (GPS_status == GPS_FIX_FROM_FLOAT)
+        refreshDirectionGraphic(directionOfTravel, heading_to_target);
+
+      refreshDepthDisplay();
+
+      blackout_journey_no_movement = false;
+    }
+    else
+    {
+
+    }
+  }
+  else if (display_to_show == AUDIO_TEST_DISPLAY)
+  {
+    M5.Lcd.setRotation(1);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(0, 0);
+
+    M5.Lcd.setTextColor(TFT_BLACK, TFT_GREEN);
+    M5.Lcd.println("Toggle ESPNow: Top 10s\n");
+    M5.Lcd.println("Start/Stop Play: Side 0.5s\n");
+    M5.Lcd.println("Vol cycle: Side 2s\n");
+    M5.Lcd.println("Next Track: Side 5s\n");
+  }
+  else if (display_to_show == SHOW_LAT_LONG_DISPLAY)
+  {
+    M5.Lcd.setRotation(1);
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.setCursor(0, 0);
+    /*
+            if (setTweetEmergencyNowFlag == true)
+            {
+              M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
+              M5.Lcd.printf("SOS TWEET SENT\n", Lat);
+              sleep(3000);
+            }
+            else
+            {
+              M5.Lcd.setTextColor(TFT_BLUE, TFT_YELLOW);
+              M5.Lcd.printf(" TWEET SENT! \n", Lat);
+            }
+    */
+
+    M5.Lcd.setTextColor(TFT_BLACK, TFT_GREEN);
+    M5.Lcd.printf("Location Here\n");
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    M5.Lcd.printf("La:%.5f\n", Lat);
+    M5.Lcd.printf("Lo:%.5f\n", Lng);
+    M5.Lcd.printf("%02d:%02d:%02d\n", gps.time.hour(), gps.time.minute(), gps.time.second());
+    M5.Lcd.printf("%02d/%02d/%02d\n", gps.date.day(), gps.date.month(), gps.date.year());
+
+    if (millis() > showLatLongStartTime + showLatLongHoldDuration)
+    {
+      showLatLongStartTime = 0;
+      display_to_show = NAV_COMPASS_DISPLAY;
+    }
+  }
+  else if (display_to_show == LOCATION_DISPLAY)
+  {
+    M5.Lcd.setRotation(1);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+
+    M5.Lcd.setCursor(5, 0);
+    M5.Lcd.printf("La:%.5f   ", Lat);
+    M5.Lcd.setCursor(5, 17);
+    M5.Lcd.printf("Lo:%.5f   ", Lng);
+    M5.Lcd.setCursor(5, 34);
+
+    M5.Lcd.printf("Depth:%.0f m  ", depth);
+    M5.Lcd.setCursor(5, 51);
+    M5.Lcd.printf("Water P:%.1f% Bar", water_pressure);
+
+    M5.Lcd.setCursor(5, 68);
+    M5.Lcd.printf("T:%s", nextTarget->_label);
+
+    M5.Lcd.setCursor(5, 85);
+    if (WiFi.status() == WL_CONNECTED)
+      M5.Lcd.printf("IP: %s", WiFi.localIP().toString());
+    else
+      M5.Lcd.printf("IP: No WiFi");
+
+    M5.Lcd.setCursor(5, 102);
+    M5.Lcd.printf("crs: %.0f d: %.0f    ", heading_to_target, distance_to_target);
+  }
+  else if (display_to_show == JOURNEY_DISPLAY)
+  {
+    M5.Lcd.setRotation(1);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+
+    M5.Lcd.setCursor(5, 0);
+    M5.Lcd.printf("V:%.2fV I:%.0fmA  ", M5.Axp.GetVBusVoltage(), M5.Axp.GetVBusCurrent());
+    M5.Lcd.setCursor(5, 17);
 
 
+    M5.Lcd.printf("OTA:%hu Uplink:%hu", otaActiveListening,  enableUplinkComms);
 
+    M5.Lcd.setCursor(5, 34);
+    M5.Lcd.printf("Wifi:%hu %s", WiFi.status() == WL_CONNECTED, ssid_connected);
+    M5.Lcd.setCursor(5, 51);
+    M5.Lcd.printf("Fix:%lu Up:%lu", fixCount, uplinkMessageCount);
+    M5.Lcd.setCursor(5, 68);
+    M5.Lcd.printf("chk+:%lu chk-:%lu", newPassedChecksum, newFailedChecksum);
+    M5.Lcd.setCursor(5, 85);
+    M5.Lcd.printf("tc:%.0f d:%.0f  ", heading_to_target, distance_to_target);
+    M5.Lcd.setCursor(5, 102);
+    M5.Lcd.printf("%02d:%02d:%02d UTC", gps.time.hour(), gps.time.minute(), gps.time.second());
+    M5.Lcd.setCursor(5, 119);
+    M5.Lcd.printf("Uptime:%.1f", ((float)millis() / 1000.0));
+  }
+  else
+  {
+    M5.Lcd.setCursor(5, 17);
+    M5.Lcd.printf("NULL DISPLAY");
+  }
+
+  // overlay count up / power on time in seconds.
+  if (enableGlobalUptimeDisplay)
+  {
+    M5.Lcd.setCursor(0, SCREEN_WIDTH - 15);
+    M5.Lcd.setRotation(1);
+    M5.Lcd.setTextFont(1);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+    M5.Lcd.printf(" Uptime: %.1f ", ((float)millis() / 1000.0));
+  }
+}
+
+
+void performUplinkTasks()
+{
+  if (enableUplinkComms)
+  {
+    if (uplinkMessageCount % telemetry_send_full_message_duty_cycle == 0)
+    {
+      fp_sendUplinkMessage();
+    }
+    else
+    {
+      sendBasicWithDepthUplinkTelemetryMessage();
+      //            sendBasicUplinkTelemetryMessage();
+    }
+
+    uplinkMessageCount++;
+  }    
+}
+
+void refreshGlobalStatusDisplay()
+{
+  if (power_up_no_fix_byte_loop_count > 0)
+  {
+    // Bytes have been received from the Float UART/Serial but no fix has been received since power on.
+    // The 'No Fix' only shown on first acquisition.
+    M5.Lcd.setCursor(55, 5);
+    M5.Lcd.setTextSize(4);
+    M5.Lcd.printf("No Fix\n");
+    M5.Lcd.setCursor(110, 45);
+    M5.Lcd.printf("%c", activity_indicator[(++activity_count) % 4]);
+    delay(250); // no fix wait
+  }
+  else if (power_up_no_fix_byte_loop_count != -1)
+  {
+    // No GPS is reported when no bytes have ever been received on the Float UART/Serial.
+    // Once messages start being received, this is blocked as it is normal
+    // to have gaps in the stream. There is no indication if GPS stream hangs
+    // after first byte received, eg no bytes within 10 seconds.
+    M5.Lcd.setCursor(55, 5);
+    M5.Lcd.setTextSize(4);
+    M5.Lcd.printf("No GPS\n");
+    M5.Lcd.setCursor(110, 45);
+    M5.Lcd.printf("%c", activity_indicator[(++activity_count) % 4]);
+    delay(250); // no fix wait
+  }
+  else
+  {
+    // do nothing - the two conditions above are dealing with initial conditions before any fix/msg received from float serial
+  }
+}
 
 void sendNoUplinkTelemetryMessages()
 {
@@ -1871,10 +1951,10 @@ void sendUplinkTelemetryMessageV4()
     switch (newWayMarker)         // guidance label
     {
       case BLACKOUT_MARKER:  newWayMarkerLabel[0] = shortBlackOut[0]; newWayMarkerLabel[1] = shortBlackOut[1]; break;
-      case GO_ANTICLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortBlackOut[0]; newWayMarkerLabel[1] = shortAntiClockwise[1]; break;
+      case GO_ANTICLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortAntiClockwise[0]; newWayMarkerLabel[1] = shortAntiClockwise[1]; break;
       case GO_AHEAD_MARKER:  newWayMarkerLabel[0] = shortAhead[0]; newWayMarkerLabel[1] = shortAhead[1]; break;
-      case GO_CLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortClockwise[0]; newWayMarkerLabel[1] = shortClockwise[1];; break;
-      case GO_TURN_AROUND_MARKER:  newWayMarkerLabel[0] = shortTurnAround[0]; newWayMarkerLabel[1] = shortTurnAround[1];; break;
+      case GO_CLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortClockwise[0]; newWayMarkerLabel[1] = shortClockwise[1]; break;
+      case GO_TURN_AROUND_MARKER:  newWayMarkerLabel[0] = shortTurnAround[0]; newWayMarkerLabel[1] = shortTurnAround[1]; break;
       case UNKNOWN_MARKER:  newWayMarkerLabel[0] = shortUnknownMarker[0]; newWayMarkerLabel[1] = shortUnknownMarker[1]; break;
       default: newWayMarkerLabel[0] = shortUndefinedMarker[0]; newWayMarkerLabel[1] = shortUndefinedMarker[1]; break; // undefined
     }
@@ -1934,8 +2014,7 @@ void sendUplinkTelemetryMessageV5()
     uint16_t uplink_distance_to_target = (distance_to_target < 6499 ? distance_to_target * 10.0 : 64999);
     uint16_t uplink_journey_course = journey_course * 10.0;
     uint16_t uplink_journey_distance = journey_distance * 100.0;
-
-    uint16_t uplink_mako_screen_display = 0xFFFF;     // TO DO
+    
     uint16_t uplink_mako_seconds_on = millis() / 1000.0 / 60.0;
     uint16_t uplink_mako_user_action = 0xFFFF;    // has mode been changed or action done by user?
     uint16_t uplink_mako_AXP192_temp = (M5.Axp.GetTempData() * 0.1 - 144.7) * 10.0; // ?????
@@ -1985,7 +2064,20 @@ void sendUplinkTelemetryMessageV5()
     *(nextMetric++) = uplink_distance_to_target;
     *(nextMetric++) = uplink_journey_course;
     *(nextMetric++) = uplink_journey_distance;
-    *(nextMetric++) = uplink_mako_screen_display;
+    
+    switch (display_to_show)
+    {
+      case NAV_COMPASS_DISPLAY: displayLabel[0] = navCompassDisplayLabel[0]; displayLabel[1] = navCompassDisplayLabel[1]; break;
+      case NAV_COURSE_DISPLAY:  displayLabel[0] = navCourseDisplayLabel[0]; displayLabel[1] = navCourseDisplayLabel[1]; break;
+      case LOCATION_DISPLAY:    displayLabel[0] = locationDisplayLabel[0]; displayLabel[1] = locationDisplayLabel[1]; break;
+      case JOURNEY_DISPLAY:     displayLabel[0] = journeyDisplayLabel[0]; displayLabel[1] = journeyDisplayLabel[1]; break;
+      case SHOW_LAT_LONG_DISPLAY: displayLabel[0] = showLatLongDisplayLabel[0]; displayLabel[1] = showLatLongDisplayLabel[1]; break;
+      case AUDIO_TEST_DISPLAY:  displayLabel[0] = audioTestDisplayLabel[0]; displayLabel[1] = audioTestDisplayLabel[1]; break;
+      default:                  displayLabel[0] = undefinedDisplayLabel[0]; displayLabel[1] = undefinedDisplayLabel[1]; break;
+    }
+
+    *(nextMetric++) = (uint16_t)(displayLabel[0]) + (((uint16_t)(displayLabel[1])) << 8); // which display is shown on the console
+
     *(nextMetric++) = uplink_mako_seconds_on;
     *(nextMetric++) = uplink_mako_user_action;
     *(nextMetric++) = uplink_mako_AXP192_temp;
@@ -2022,17 +2114,24 @@ void sendUplinkTelemetryMessageV5()
     switch (newWayMarker)         // guidance label
     {
       case BLACKOUT_MARKER:  newWayMarkerLabel[0] = shortBlackOut[0]; newWayMarkerLabel[1] = shortBlackOut[1]; break;
-      case GO_ANTICLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortBlackOut[0]; newWayMarkerLabel[1] = shortAntiClockwise[1]; break;
+      case GO_ANTICLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortAntiClockwise[0]; newWayMarkerLabel[1] = shortAntiClockwise[1]; break;
       case GO_AHEAD_MARKER:  newWayMarkerLabel[0] = shortAhead[0]; newWayMarkerLabel[1] = shortAhead[1]; break;
-      case GO_CLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortClockwise[0]; newWayMarkerLabel[1] = shortClockwise[1];; break;
+      case GO_CLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortClockwise[0]; newWayMarkerLabel[1] = shortClockwise[1]; break;
       case GO_TURN_AROUND_MARKER:  newWayMarkerLabel[0] = shortTurnAround[0]; newWayMarkerLabel[1] = shortTurnAround[1]; break;
       case UNKNOWN_MARKER:  newWayMarkerLabel[0] = shortUnknownMarker[0]; newWayMarkerLabel[1] = shortUnknownMarker[1]; break;
       default: newWayMarkerLabel[0] = shortUndefinedMarker[0]; newWayMarkerLabel[1] = shortUndefinedMarker[1]; break; // undefined
     }
 
+    switch (directionMetric)
+    {
+      case JOURNEY_COURSE: directionMetricLabel[0] = shortJourneyCourseDirectionMetric[0]; directionMetricLabel[1] = shortJourneyCourseDirectionMetric[1]; break;
+      case COMPASS_HEADING: directionMetricLabel[0] = shortCompassHeadingDirectionMetric[0]; directionMetricLabel[1] = shortCompassHeadingDirectionMetric[1]; break;
+      default: directionMetricLabel[0] = shortUndefinedDirectionMetric[0]; directionMetricLabel[1] = shortUndefinedDirectionMetric[1]; break;
+    }
+
     // 2 x 16 bit words (2 x 2 byte metrics)
-    *(nextMetric++) = (uint16_t)(newWayMarkerLabel[0]) + ((uint16_t)(newWayMarkerLabel[1])) << 8; // guidance graphic
-    *(nextMetric++) = directionMetric; // whether course or compass heading is shown on display
+    *(nextMetric++) = (uint16_t)(newWayMarkerLabel[0]) + (((uint16_t)(newWayMarkerLabel[1])) << 8); // guidance graphic
+    *(nextMetric++) = (uint16_t)(directionMetricLabel[0]) + (((uint16_t)(directionMetricLabel[1])) << 8); // whether course or compass heading is shown on display
 
     // 2 x 16 bit words (1 x 2 byte metric plus 2 byte checksum)
     *(nextMetric++) = uplink_flags;
