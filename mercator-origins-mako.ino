@@ -18,6 +18,8 @@
 uint16_t ESPNowMessagesDelivered = 0;
 uint16_t ESPNowMessagesFailedToDeliver = 0;
 
+uint8_t ESPNow_data_to_send = 33;
+
 esp_now_peer_info_t ESPNow_slave;
 const uint8_t ESPNOW_CHANNEL = 1;
 const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
@@ -177,7 +179,14 @@ double ref_lat = 51.391231;
 double ref_lng = -0.287616;
 
 uint16_t telemetryMessage[100];
-char shortBlackOut[]="BL";char shortAntiClockwise[]="AC";char shortAhead[]="AH";char shortClockwise[]="CL";char shortUnknownMarker[]="UM";char shortUndefinedMarker[]="UD";
+
+char shortBlackOut[]="BL";
+char shortAntiClockwise[]="AC";
+char shortAhead[]="AH";
+char shortClockwise[]="CL";
+char shortTurnAround[]="TA";
+char shortUnknownMarker[]="UM";
+char shortUndefinedMarker[]="UD";
 
 
 class navigationTarget
@@ -218,7 +227,7 @@ navigationTarget diveOneTargets[targetCount]=
 
 navigationTarget* nextTarget = diveOneTargets;
 
-enum e_way_marker {BLACKOUT_MARKER,GO_ANTICLOCKWISE_MARKER,GO_AHEAD_MARKER, GO_CLOCKWISE_MARKER, UNKNOWN_MARKER};
+enum e_way_marker {BLACKOUT_MARKER,GO_ANTICLOCKWISE_MARKER,GO_AHEAD_MARKER, GO_CLOCKWISE_MARKER, GO_TURN_AROUND_MARKER, UNKNOWN_MARKER};
 enum e_direction_metric {JOURNEY_COURSE,COMPASS_HEADING};
 
 double heading_to_target=0, distance_to_target=-0;
@@ -420,10 +429,13 @@ void goAhead();
 void goClockwise();
 void goUnknown();
 void goAntiClockwise();
+void goTurnAround();
+
 void drawGoAhead(const bool show);
 void drawGoBlackout(const bool show);
 void drawGoAhead(const bool show);
 void drawGoClockwise(const bool show);
+void drawGoTurnAround(const bool show);
 void drawGoUnknown(const bool show);
 void drawGoAntiClockwise(const bool show);
 
@@ -1850,6 +1862,7 @@ void sendUplinkTelemetryMessageV4()
       case GO_ANTICLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortBlackOut[0];newWayMarkerLabel[1] = shortAntiClockwise[1]; break;
       case GO_AHEAD_MARKER:  newWayMarkerLabel[0] = shortAhead[0];newWayMarkerLabel[1] = shortAhead[1]; break;
       case GO_CLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortClockwise[0];newWayMarkerLabel[1] = shortClockwise[1];; break;
+      case GO_TURN_AROUND_MARKER:  newWayMarkerLabel[0] = shortTurnAround[0];newWayMarkerLabel[1] = shortTurnAround[1];; break;
       case UNKNOWN_MARKER:  newWayMarkerLabel[0] = shortUnknownMarker[0];newWayMarkerLabel[1] = shortUnknownMarker[1]; break;
       default: newWayMarkerLabel[0] = shortUndefinedMarker[0];newWayMarkerLabel[1] = shortUndefinedMarker[1]; break;  // undefined
     }
@@ -2000,6 +2013,7 @@ void sendUplinkTelemetryMessageV5()
       case GO_ANTICLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortBlackOut[0];newWayMarkerLabel[1] = shortAntiClockwise[1]; break;
       case GO_AHEAD_MARKER:  newWayMarkerLabel[0] = shortAhead[0];newWayMarkerLabel[1] = shortAhead[1]; break;
       case GO_CLOCKWISE_MARKER:  newWayMarkerLabel[0] = shortClockwise[0];newWayMarkerLabel[1] = shortClockwise[1];; break;
+      case GO_TURN_AROUND_MARKER:  newWayMarkerLabel[0] = shortTurnAround[0];newWayMarkerLabel[1] = shortTurnAround[1]; break;
       case UNKNOWN_MARKER:  newWayMarkerLabel[0] = shortUnknownMarker[0];newWayMarkerLabel[1] = shortUnknownMarker[1]; break;
       default: newWayMarkerLabel[0] = shortUndefinedMarker[0];newWayMarkerLabel[1] = shortUndefinedMarker[1]; break;  // undefined
     }
@@ -2122,7 +2136,133 @@ void refreshDepthDisplay()
   M5.Lcd.printf("%.1fm  ",depth);
 }
 
+
 void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
+{
+  if (!enableNavigationGraphics)
+    return;
+    
+  // Calculate whether the traveller needs to continue straight ahead,
+  // rotate clockwise or rotate anticlockwise and update graphic.
+  // Blacks out if no journey recorded.
+  int16_t edgeBound = 15;    // If journey course within +- 15 degrees of target heading then go ahead
+
+  int16_t normaliser = (int16_t)(directionOfTravel);
+
+  int16_t d = (int16_t)directionOfTravel - normaliser;  // directionofTravel normalised to zero
+  int16_t t = (int16_t)headingToTarget - normaliser;    // headingToTarget normalised.
+  if (t>180)                    // normalise to range -179 to +180 degrees
+    t-=360;
+  else if (t<=-180)
+    t+=360;
+    
+  int16_t e1 = t - edgeBound;   // left-most edge to target
+  if (e1>180)                   // normalise to range -179 to +180 degrees
+    e1-=360;
+  else if (e1 <= -180)
+    e1+=360;
+    
+  int16_t e2 = t + edgeBound;   // right-most edge to target
+  if (e2>180)                   // normalise to range -179 to +180 degrees
+    e2-=360;
+  else if (e2 <=-180)
+    e2+=360;
+
+  int16_t o = t+180;            // opposite heading to target
+  if (o > 180)                  // normalise to range -179 to +180 degrees
+    o-=360;
+  else if (o <= -180)
+    o+=360;
+
+  
+  if (blackout_journey_no_movement)
+  {
+    goBlackout();
+    lastWayMarker=BLACKOUT_MARKER;
+  }
+  else
+  {
+    if (millis() - lastWayMarkerChangeTimestamp > 1000)
+    {
+      lastWayMarkerChangeTimestamp = millis();
+
+      if (e1 <= d && d <= e2)     // scenario 1
+      {
+        newWayMarker=GO_AHEAD_MARKER;
+      
+        if (lastWayMarker != newWayMarker)
+        {
+          goAhead(); 
+          lastWayMarker = newWayMarker;
+        }
+      }  
+      else if (e1 > e2)           // scenario 4
+      {
+        newWayMarker=GO_TURN_AROUND_MARKER;
+      
+        if (lastWayMarker != newWayMarker)
+        {
+          goTurnAround(); 
+          lastWayMarker = newWayMarker;
+        }
+      }
+      else if (o <= d && d <= e1) // scenario 2
+      {
+        newWayMarker=GO_CLOCKWISE_MARKER;
+      
+        if (lastWayMarker != newWayMarker)
+        {
+          goClockwise(); 
+          lastWayMarker = newWayMarker;
+        }
+      }
+      else if (e2 <= d && d <= o) // scenario 3
+      {
+        newWayMarker=GO_ANTICLOCKWISE_MARKER;
+      
+        if (lastWayMarker != newWayMarker)
+        {
+          goAntiClockwise(); 
+          lastWayMarker = newWayMarker;
+        }
+      }
+      else if (o <= d && d <= e1) // scenario 5
+      {
+        newWayMarker=GO_CLOCKWISE_MARKER;
+      
+        if (lastWayMarker != newWayMarker)
+        {
+          goClockwise(); 
+          lastWayMarker = newWayMarker;
+        }
+      }
+      else if (e2 <= d && d <= o) // scenario 6
+      {
+        newWayMarker=GO_ANTICLOCKWISE_MARKER;
+      
+        if (lastWayMarker != newWayMarker)
+        {
+          goAntiClockwise(); 
+          lastWayMarker = newWayMarker;
+        }
+      }
+      else
+      {
+        newWayMarker=UNKNOWN_MARKER;
+
+        if (lastWayMarker != newWayMarker)
+        {
+          goUnknown();
+          lastWayMarker = newWayMarker;
+        }
+      }
+    }
+  }
+}
+
+
+
+void refreshDirectionGraphicOld( float directionOfTravel,  float headingToTarget)
 {
   if (!enableNavigationGraphics)
     return;
@@ -2237,6 +2377,7 @@ void goBlackout()
   drawGoClockwise(false);
   drawGoAntiClockwise(false);  
   drawGoAhead(false);
+  drawGoTurnAround(false);
 }
 
 void goAhead()
@@ -2244,20 +2385,32 @@ void goAhead()
   drawGoUnknown(false);
   drawGoClockwise(false);
   drawGoAntiClockwise(false);  
+  drawGoTurnAround(false);
   drawGoAhead(true);
+}
+
+void goTurnAround()
+{
+  drawGoUnknown(false);
+  drawGoClockwise(false);
+  drawGoAntiClockwise(false);  
+  drawGoAhead(false);
+  drawGoTurnAround(true);
 }
 
 void goClockwise()
 {
   drawGoUnknown(false);
   drawGoAhead(false);
-  drawGoClockwise(true);
   drawGoAntiClockwise(false);
+  drawGoTurnAround(false);
+  drawGoClockwise(true);
 }
 
 void goUnknown()
 {
   drawGoAhead(false);
+  drawGoTurnAround(false);
   drawGoClockwise(false);
   drawGoAntiClockwise(false);
   drawGoUnknown(true);
@@ -2267,6 +2420,7 @@ void goAntiClockwise()
 {
   drawGoUnknown(false);
   drawGoAhead(false);
+  drawGoTurnAround(false);
   drawGoClockwise(false);
   drawGoAntiClockwise(true);  
 }
@@ -2289,7 +2443,31 @@ void drawGoAhead(const bool show)
     M5.Lcd.setTextColor(TFT_BLACK,TFT_GREEN);
     M5.Lcd.print("Ahead");
   }
+}
 
+void drawGoTurnAround(const bool show)
+{
+  uint32_t colour=(show ? TFT_PURPLE : TFT_BLACK);
+  const int screenWidth=M5.Lcd.width();
+  const int screenHeight=M5.Lcd.height();
+
+  M5.Lcd.fillTriangle(0,screenHeight,
+                      screenWidth,screenHeight,
+                      screenWidth/2,screenHeight-70,
+                      colour);
+
+  M5.Lcd.fillTriangle(0,screenHeight-70,
+                      screenWidth,screenHeight-70,
+                      screenWidth/2,screenHeight,
+                      colour);
+
+ if (show)
+  {
+    M5.Lcd.setCursor(20,200);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setTextColor(TFT_BLACK,TFT_PURPLE);
+    M5.Lcd.print("Turn Around");
+  }
 }
 
 void drawGoAntiClockwise(const bool show)
@@ -2340,7 +2518,7 @@ void drawGoUnknown(const bool show)
   M5.Lcd.setCursor(screenWidth/2,190);
   M5.Lcd.setTextSize(5);
   M5.Lcd.setTextColor(colour,TFT_BLACK);
-  M5.Lcd.print("!"); 
+  M5.Lcd.print("!");
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2907,6 +3085,7 @@ void publishToSilkySkipToNextTrack()
      M5.Lcd.println("Silky: Skip to Next Track");
      // Send byte command to Silky to say skip to next track
      ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_NEXT_TRACK;
+    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
      esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
     displayESPNowSendDataResult(result);
@@ -2928,6 +3107,7 @@ void publishToSilkyCycleVolumeUp()
      M5.Lcd.println("Silky: Cycle volume up");
      // Send byte command to Silky to say skip to next track
      ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP;
+  const uint8_t *peer_addr = ESPNow_slave.peer_addr;
      esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
     displayESPNowSendDataResult(result);
@@ -2949,6 +3129,7 @@ void publishToSilkyTogglePlayback()
      M5.Lcd.println("Silky: Toggle Playback");
      // Send byte command to Silky to say skip to next track
      ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK;
+  const uint8_t *peer_addr = ESPNow_slave.peer_addr;
      esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
     displayESPNowSendDataResult(result);
@@ -3745,8 +3926,6 @@ void ESPNowDeletePeer() {
     Serial.println("Not sure what happened");
   }
 }
-
-uint8_t ESPNow_data_to_send = 33;
 
 void ESPNowSendData() {
   ESPNow_data_to_send++;
