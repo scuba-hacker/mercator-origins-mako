@@ -23,6 +23,11 @@ const uint8_t ESPNOW_CHANNEL = 1;
 const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
 const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
 
+const uint8_t SILKY_ESPNOW_COMMAND_NEXT_TRACK = 0;
+const uint8_t SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK = 1;
+const uint8_t SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP = 2;
+
+
 #include "tb_display.h"
 
 // screen Rotation values:
@@ -255,7 +260,7 @@ uint8_t graphicsCount=0;
 
 char journey_activity_indicator[]="\\|/-";
 
-enum e_mako_displays {NAV_COMPASS_DISPLAY,NAV_COURSE_DISPLAY,LOCATION_DISPLAY,JOURNEY_DISPLAY,SHOW_LAT_LONG_DISPLAY};
+enum e_mako_displays {NAV_COMPASS_DISPLAY,NAV_COURSE_DISPLAY,LOCATION_DISPLAY,JOURNEY_DISPLAY,SHOW_LAT_LONG_DISPLAY,AUDIO_TEST_DISPLAY};
 const e_mako_displays first_display_rotation = NAV_COMPASS_DISPLAY;
 const e_mako_displays last_display_rotation = JOURNEY_DISPLAY;
 
@@ -1186,6 +1191,17 @@ void loop()
           
           }
        }
+       else if (display_to_show == AUDIO_TEST_DISPLAY)
+       {
+          M5.Lcd.setRotation(1);
+          M5.Lcd.setTextSize(2);
+  
+          M5.Lcd.setTextColor(TFT_BLACK, TFT_GREEN);
+          M5.Lcd.println("Toggle ESPNow: Top 10s\n");
+          M5.Lcd.println("Start/Stop Play: Side 0.5s\n");
+          M5.Lcd.println("Vol cycle: Side 2s\n");
+          M5.Lcd.println("Next Track: Side 5s\n");
+       }
       else if (display_to_show == SHOW_LAT_LONG_DISPLAY)
       {
         M5.Lcd.setRotation(1);
@@ -1319,6 +1335,37 @@ void loop()
           if (p_secondButton->wasReleasefor(1000)) // Journey Course Display: toggle uptime
           {
             toggleUptimeGlobalDisplay();
+          }
+        }
+        else if (display_to_show == AUDIO_TEST_DISPLAY)
+        {
+/*
+          M5.Lcd.println("Toggle ESPNow: Top 10s\n");
+          M5.Lcd.println("Start/Stop Play: Side 0.5s\n");
+          M5.Lcd.println("Vol cycle: Side 2s\n");
+          M5.Lcd.println("Next Track: Side 5s\n");
+*/
+
+          if (p_primaryButton->wasReleasefor(10000))    // toggle between espnow and wifi
+          {
+            toggleESPNowActive();
+          }
+         else if (p_primaryButton->wasReleasefor(100))  // change display screen
+         {
+            switchToNextDisplayToShow();
+         }
+
+          if (p_secondButton->wasReleasefor(5000)) // Skip to next track
+          {
+            publishToSilkySkipToNextTrack();
+          }
+          else if (p_secondButton->wasReleasefor(2000)) // cycle volume up and then low at max
+          {
+            publishToSilkyCycleVolumeUp();
+          }
+          else if (p_secondButton->wasReleasefor(500)) // start/stop play
+          {
+            publishToSilkyTogglePlayback();
           }
         }
         else
@@ -2824,26 +2871,137 @@ void toggleOTAActive()
    M5.Lcd.fillScreen(TFT_BLACK);
 }
 
+void notifyESPNowNotActive()
+{
+   M5.Lcd.fillScreen(TFT_RED);
+   M5.Lcd.setCursor(0,0);
+   M5.Lcd.println("Error: Enable ESPNow");
+   delay (2000);
+   M5.Lcd.fillScreen(TFT_BLACK);
+}
+
+void displayESPNowSendDataResult(const esp_err_t result)
+{
+  if (result == ESP_OK) 
+    M5.Lcd.println("Success");
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+    M5.Lcd.println("ESPNOW not Init.");
+  else if (result == ESP_ERR_ESPNOW_ARG) 
+    M5.Lcd.println("ESPNOW Invalid Argument");
+  else if (result == ESP_ERR_ESPNOW_INTERNAL) 
+    M5.Lcd.println("ESPNOW Internal Error");
+  else if (result == ESP_ERR_ESPNOW_NO_MEM) 
+    M5.Lcd.println("ESPNOW No Memory");
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND) 
+    M5.Lcd.println("ESPNOW Peer not found.");
+  else 
+    M5.Lcd.println("ESPNOW Unknown Error");  
+}
+
+void publishToSilkySkipToNextTrack()
+{
+  if (ESPNowActive)
+  {
+     M5.Lcd.fillScreen(TFT_GREEN);
+     M5.Lcd.setCursor(0,0);
+     M5.Lcd.println("Silky: Skip to Next Track");
+     // Send byte command to Silky to say skip to next track
+     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_NEXT_TRACK;
+     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+
+    displayESPNowSendDataResult(result);
+    delay(1000);
+     M5.Lcd.fillScreen(TFT_BLACK);
+  }
+  else
+  {
+    notifyESPNowNotActive();
+  }
+}
+
+void publishToSilkyCycleVolumeUp()
+{
+  if (ESPNowActive)
+  {
+     M5.Lcd.fillScreen(TFT_GREEN);
+     M5.Lcd.setCursor(0,0);
+     M5.Lcd.println("Silky: Cycle volume up");
+     // Send byte command to Silky to say skip to next track
+     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP;
+     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+
+    displayESPNowSendDataResult(result);
+    delay(1000);
+     M5.Lcd.fillScreen(TFT_BLACK);
+  }
+  else
+  {
+    notifyESPNowNotActive();
+  }
+}
+
+void publishToSilkyTogglePlayback()
+{
+  if (ESPNowActive)
+  {
+     M5.Lcd.fillScreen(TFT_GREEN);
+     M5.Lcd.setCursor(0,0);
+     M5.Lcd.println("Silky: Toggle Playback");
+     // Send byte command to Silky to say skip to next track
+     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK;
+     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+
+    displayESPNowSendDataResult(result);
+    delay(1000);
+     M5.Lcd.fillScreen(TFT_BLACK);
+  }
+  else
+  {
+    notifyESPNowNotActive();
+  }
+}
+
+
+
+
 void toggleESPNowActive()
 {
   if (enableESPNow)
   {
+     M5.Lcd.fillScreen(TFT_ORANGE);
+     M5.Lcd.setCursor(0,0);
+  
     if (ESPNowActive == false)
     {
       if (otaActiveListening)
         toggleOTAActive();
+
+      bool disabledWiFi=false;
       
       if (WiFi.status() == WL_CONNECTED)
+      {
         toggleWiFiActive();
+        disabledWiFi=true;
+      }
     
       connectESPNow();
       ESPNowActive = true;
+
+      if (disabledWiFi)
+       M5.Lcd.printf("Wifi Disabled\nESPNow Enabled");
+      else
+       M5.Lcd.printf("ESPNow Enabled");
+      
+     delay (2000);
     }
     else
     {
       // disconnect ESPNow;
       TeardownESPNow();  
       ESPNowActive = false;
+
+     M5.Lcd.printf("ESPNow Disabled");
+     delay (2000);
     }
   }
 }
@@ -3429,11 +3587,27 @@ void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   {
     ESPNowMessagesDelivered++;   
     sprintf(ESPNowDiagBuffer,"Del Ok %hu ",ESPNowMessagesDelivered);
+    // flash RED LED once
+    digitalWrite(RED_LED_GPIO, LOW);
+    delay(500);
+    digitalWrite(RED_LED_GPIO, HIGH);
   }
   else
   {
     ESPNowMessagesFailedToDeliver++;
     sprintf(ESPNowDiagBuffer,"Del Fail %hu ",ESPNowMessagesFailedToDeliver);
+    // flash RED LED three times
+    digitalWrite(RED_LED_GPIO, LOW);
+    delay(500);
+    digitalWrite(RED_LED_GPIO, HIGH);
+    delay(500);
+    digitalWrite(RED_LED_GPIO, LOW);
+    delay(500);
+    digitalWrite(RED_LED_GPIO, HIGH);    
+    delay(500);
+    digitalWrite(RED_LED_GPIO, LOW);
+    delay(500);
+    digitalWrite(RED_LED_GPIO, HIGH);    
   }
   
   tb_display_print_String(ESPNowDiagBuffer);
