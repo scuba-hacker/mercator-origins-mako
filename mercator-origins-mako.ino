@@ -687,9 +687,6 @@ It seems that I should set GPIO36 to Floating.
     pinMode(RED_LED_GPIO, OUTPUT); // Red LED
     digitalWrite(RED_LED_GPIO, HIGH); // switch off
 
-    pinMode(IR_LED_GPS_TX_PIN, OUTPUT);
-    digitalWrite(IR_LED_GPS_TX_PIN, HIGH); // switch off
-
 /*
     timerSemaphore = xSemaphoreCreateBinary();
     timer = timerBegin(0, 80, true);      // pre-scaler of 80, dividing 80MHz by 80 to trigger every 1uS
@@ -1898,11 +1895,6 @@ void sendUplinkTelemetryMessageV5()
   const uint32_t quietTimeMsBeforeUplink = 5; 
   if (millis() > latestFixTimeStamp + quietTimeMsBeforeUplink)
   {
-
-//    digitalWrite(IR_LED_GPS_TX_PIN, LOW);
-//    delay(50);
-//    digitalWrite(IR_LED_GPS_TX_PIN, HIGH);
-
     latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
 
     // this is 57 words, 114 bytes including checksum (56 metrics)
@@ -2036,11 +2028,12 @@ void sendUplinkTelemetryMessageV5()
     {
        telemetryMessage[number_uplink_metrics]^=telemetryMessage[i];
     }
-          
+
     float_serial.write(uplink_preamble_pattern);
     
     float_serial.write((char*)telemetryMessage,uplink_length);
 
+    
     // clear flags
     if (setTweetLocationNowFlag == true)
       setTweetLocationNowFlag = false;
