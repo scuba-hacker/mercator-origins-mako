@@ -77,12 +77,12 @@ const bool enableNavigationGraphics=true;
 const bool enableNavigationTargeting=true;
 const bool enableRecentCourseCalculation=true;
 bool enableGlobalUptimeDisplay=false;      // adds a timer to compass heading display so can see if a crash/reboot has happened
-bool enableWifiAtStartup=false;
+bool enableWifiAtStartup=true;
 
-bool otaActiveListening=false;   // OTA updates toggle
+bool otaActiveListening=true;   // OTA updates toggle
 bool otaFirstInit=false;         // Start OTA at boot
 
-bool enableESPNow=true;         // 
+bool enableESPNow=false;         // 
 bool ESPNowActive=false;         // can be toggled through interface.
 
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
@@ -137,7 +137,7 @@ bool setTweetEmergencyNowFlag=false;
   // QUBITRO END
 #endif
 
-const uint8_t telemetry_send_full_message_duty_cycle = 4;
+const uint8_t telemetry_send_full_message_duty_cycle = 1;
 uint8_t telemetry_message_count=0;
 
 
@@ -1898,6 +1898,11 @@ void sendUplinkTelemetryMessageV5()
   const uint32_t quietTimeMsBeforeUplink = 5; 
   if (millis() > latestFixTimeStamp + quietTimeMsBeforeUplink)
   {
+
+//    digitalWrite(IR_LED_GPS_TX_PIN, LOW);
+//    delay(50);
+//    digitalWrite(IR_LED_GPS_TX_PIN, HIGH);
+
     latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
 
     // this is 57 words, 114 bytes including checksum (56 metrics)
@@ -2129,13 +2134,12 @@ void testForDualButtonPressAutoShutdownChange()
 
 void refreshDepthDisplay()
 {
-  M5.Lcd.setCursor(28,165);
+  M5.Lcd.setCursor(30,151);
   M5.Lcd.setTextSize(3);
   M5.Lcd.setTextFont(0);
   M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
-  M5.Lcd.printf("%.1fm  ",depth);
+  M5.Lcd.printf("%4.1fm",depth);
 }
-
 
 void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
 {
@@ -2375,7 +2379,7 @@ void goBlackout()
 {
   drawGoUnknown(false);
   drawGoClockwise(false);
-  drawGoAntiClockwise(false);  
+  drawGoAntiClockwise(false);
   drawGoAhead(false);
   drawGoTurnAround(false);
 }
@@ -2447,14 +2451,9 @@ void drawGoAhead(const bool show)
 
 void drawGoTurnAround(const bool show)
 {
-  uint32_t colour=(show ? TFT_PURPLE : TFT_BLACK);
+  uint32_t colour=(show ? TFT_CYAN : TFT_BLACK);
   const int screenWidth=M5.Lcd.width();
   const int screenHeight=M5.Lcd.height();
-
-  M5.Lcd.fillTriangle(0,screenHeight,
-                      screenWidth,screenHeight,
-                      screenWidth/2,screenHeight-70,
-                      colour);
 
   M5.Lcd.fillTriangle(0,screenHeight-70,
                       screenWidth,screenHeight-70,
@@ -2463,10 +2462,12 @@ void drawGoTurnAround(const bool show)
 
  if (show)
   {
-    M5.Lcd.setCursor(20,200);
     M5.Lcd.setTextSize(2);
-    M5.Lcd.setTextColor(TFT_BLACK,TFT_PURPLE);
-    M5.Lcd.print("Turn Around");
+    M5.Lcd.setTextColor(TFT_BLACK,TFT_CYAN);
+    M5.Lcd.setCursor(45,180);
+    M5.Lcd.print("Turn");
+    M5.Lcd.setCursor(30,200);
+    M5.Lcd.print("Around");
   }
 }
 
