@@ -1683,12 +1683,12 @@ void sendUplinkTelemetryMessageV2()
     uint16_t uplink_mako_screen_display = 0xFFFF;     // TO DO
     uint16_t uplink_mako_seconds_on = millis() / 1000.0;
     uint16_t uplink_mako_user_action = 0xFFFF;    // has mode been changed or action done by user?
-    uint16_t uplink_mako_AXP192_temp = (M5.Axp.GetTempData() * 0.1 - 144.7) * 10.0; // ?????
+    uint16_t uplink_mako_AXP192_temp = M5.Axp.GetTempInAXP192() * 10.0;
     uint16_t uplink_mako_usb_voltage = M5.Axp.GetVBusVoltage() * 1000.0;
     uint16_t uplink_mako_usb_current = M5.Axp.GetVBusCurrent() * 100.0;
 
-    uint16_t uplink_mako_bat_voltage = (M5.Axp.GetVbatData() * 1.1 / 1000) * 1000.0;
-    uint16_t uplink_mako_bat_charge_current = (M5.Axp.GetIchargeData() / 2) * 100.0;
+    uint16_t uplink_mako_bat_voltage = M5.Axp.GetBatVoltage() * 1000.0;
+    uint16_t uplink_mako_bat_charge_current = M5.Axp.GetBatChargeCurrent() * 100.0;
 
 
     uint16_t uplink_flags = setTweetLocationNowFlag | (setTweetEmergencyNowFlag << 1);
