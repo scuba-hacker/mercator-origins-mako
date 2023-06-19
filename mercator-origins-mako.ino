@@ -1751,12 +1751,10 @@ void sendUplinkTelemetryMessageV5()
     latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
 
     // this is 57 words, 114 bytes including checksum (56 metrics)
-    // format: uint16_t len, uint16_t msgtype, unit16_t depth (*10),uint16_t heading (*10),uint16_t temp (*10),uint16_t humid (*10), uint16_t pressure (*10), uint16_t checksum
 
     // fixed format
 
-    uint16_t uplink_length = 116;   // bytes to transmit in this message - including length and checksum. 55 x 2 byte words == 110 bytes
-    uint8_t  number_uplink_metrics = 57; // number of metrics including length, not including checksum
+    uint16_t uplink_length = 114;   // bytes to transmit in this message - including length and checksum. 57 x 2 byte words == 114 bytes
     uint16_t uplink_msgtype = 0;   // 0 is full fat telemetry message zero!
     uint16_t uplink_depth = depth * 10.0;
     uint16_t uplink_water_pressure = water_pressure * 100.0;
@@ -1780,8 +1778,8 @@ void sendUplinkTelemetryMessageV5()
     uint16_t uplink_mako_usb_voltage = M5.Axp.GetVBusVoltage() * 1000.0;
     uint16_t uplink_mako_usb_current = M5.Axp.GetVBusCurrent() * 100.0;
 
-    uint16_t uplink_mako_bat_voltage = (M5.Axp.GetVbatData() * 1.1 / 1000) * 1000.0;
-    uint16_t uplink_mako_bat_charge_current = (M5.Axp.GetIchargeData() / 2) * 100.0;
+    uint16_t uplink_mako_bat_voltage = M5.Axp.GetBatVoltage() * 1000.0;
+    uint16_t uplink_mako_bat_charge_current = M5.Axp.GetBatCurrent() * 100.0;
 
     float uplink_mako_lsm_mag_x = magnetometer_vector.x;
     float uplink_mako_lsm_mag_y = magnetometer_vector.y;
@@ -1895,16 +1893,19 @@ void sendUplinkTelemetryMessageV5()
     *(nextMetric++) = uplink_flags;
     *(nextMetric++) = 0;   // initialise checksum to zero prior to computing checksum
 
-    // calculate and store checksum by xor'ing all words.
-    for (int i = 0; i < number_uplink_metrics; i++)
+    // calculate and store checksum by xor'ing all words, except the 
+    uint16_t checksum = 0;
+    uint16_t wordsToXOR = uplink_length / 2;
+    for (int i = 0; i < wordsToXOR; i++)
     {
-      telemetryMessage[number_uplink_metrics] ^= telemetryMessage[i];
+      checksum ^= telemetryMessage[i];
     }
+
+    telemetryMessage[wordsToXOR-1] = checksum;
 
     float_serial.write(uplink_preamble_pattern);
 
     float_serial.write((char*)telemetryMessage, uplink_length);
-
 
     // clear flags
     if (setTweetLocationNowFlag == true)
