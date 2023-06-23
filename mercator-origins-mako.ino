@@ -161,6 +161,8 @@ char uplinkTestMessages[][6] = {"MSG0 ", "MSG1 ", "MSG2 ", "MSG3 "};
 char newWayMarkerLabel[2];
 char directionMetricLabel[2];
 
+const uint32_t minimumExpectedTimeBetweenFix = 1000;  // 1 second
+
 // I2C and framework
 #include <Wire.h>                   // I2C framework
 #include <Adafruit_Sensor.h>
@@ -182,7 +184,7 @@ gpsStatus GPS_status = GPS_NO_GPS_LIVE_IN_FLOAT;
 double ref_lat = 51.391231;
 double ref_lng = -0.287616;
 
-uint16_t telemetryMessage[100];
+uint16_t telemetryMessage[100]; // 200 bytes
 
 char shortBlackOut[] = "BL";
 char shortAntiClockwise[] = "AC";
@@ -260,11 +262,11 @@ char gesture_symbol = '-';
 const float pressure_correction = 0;  // mbar, calibrated against Braggs Wunderground - not used now
 const float depth_correction = 0;
 
-const uint32_t journey_calc_period = 500;    // in milliseconds
-const uint32_t journey_min_dist = 0;          // in metres
+//const uint32_t journey_calc_period = 500;    // in milliseconds
+//const uint32_t journey_min_dist = 0;          // in metres
 
-//const uint32_t journey_calc_period = 10000;    // in milliseconds
-//const uint32_t journey_min_dist = 5;          // in metres
+const uint32_t journey_calc_period = 10000;    // in milliseconds
+const uint32_t journey_min_dist = 5;          // in metres
 
 uint32_t last_journey_commit_time = 0;
 uint32_t journey_clear_period = 15000;    // clear the journey info after 15 secs inactivity
@@ -287,8 +289,13 @@ uint8_t graphicsCount = 0;
 
 char activity_indicator[] = "\\|/-";
 
+bool           diveTimerRunning = false;
+const uint8_t  minimumDivingDepth = 1;  // 1 metre
+uint16_t       secondsDurationDiving = 0;
+
+
 enum e_mako_displays {SURVEY_DISPLAY, NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, SHOW_LAT_LONG_DISPLAY, AUDIO_TEST_DISPLAY};
-const e_mako_displays first_display_rotation = NAV_COMPASS_DISPLAY;
+const e_mako_displays first_display_rotation = SURVEY_DISPLAY;
 const e_mako_displays last_display_rotation = JOURNEY_DISPLAY;
 
 e_mako_displays display_to_show = first_display_rotation;
@@ -460,7 +467,7 @@ void drawGoAntiClockwise(const bool show);
 
 const float minimumUSBVoltage = 2.0;
 long USBVoltageDropTime = 0;
-long milliSecondsToWaitForShutDown = 500;
+long milliSecondsToWaitForShutDown = 3000;    // When reduced to 500 there were spurious shutdowns
 bool autoShutdownOnNoUSBPower = true;
 
 bool enableButtonTestMode = false;
@@ -880,7 +887,16 @@ void loop()
 #endif
 }
 
+bool isGPSStreamOk()
+{
+  return (millis() - latestFixTimeStamp < minimumExpectedTimeBetweenFix);
+}
 
+bool isInternetUploadOk()
+{
+  // will need a message from the float for this.
+  return true;
+}
 
 bool processGPSMessageIfAvailable()
 { 
@@ -1272,11 +1288,54 @@ void refreshConsoleScreen()
 
 void drawSurveyDisplay()
 {
-  // depth
-  M5.Lcd.setCursor(5, 17);
-  M5.Lcd.printf("SURVEY DISPLAY");
-}
+    M5.Lcd.setRotation(0);
+    M5.Lcd.setCursor(15, 0);
+    M5.Lcd.setTextSize(6);
+    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
 
+    // Display Cyan Depth
+    M5.Lcd.printf("%.1f\n", depth);
+
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.setTextColor(TFT_MAGENTA, TFT_BLACK);
+    M5.Lcd.print("\n");
+    M5.Lcd.setTextSize(4);
+
+    if  (millis() - journey_clear_period > last_journey_commit_time || journey_distance == 0)
+    {
+      M5.Lcd.print("    \n");
+    }
+    else
+    {
+      M5.Lcd.printf(" %s  \n", getCardinal(journey_course).c_str());
+    }
+    
+    uint16_t diveDurationInMinutes = diveDurationInMinutes;
+    M5.Lcd.setTextSize(7);
+    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    M5.Lcd.printf("%hu'\n", diveDurationInMinutes);
+
+    M5.Lcd.setTextSize(3);
+    if (isGPSStreamOk())
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    else
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
+
+    M5.Lcd.print("\nG");
+
+    M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+
+    M5.Lcd.printf(" %.0f%% ", humidity);
+
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    
+    if (isInternetUploadOk())
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    else
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
+    
+    M5.Lcd.printf("Q");
+}
 
 void drawTargetSection()
 {
@@ -1857,8 +1916,8 @@ void sendUplinkTelemetryMessageV5()
     
     uint16_t uplink_mako_seconds_on = millis() / 1000.0 / 60.0;
     uint16_t uplink_mako_user_action = 0xFFFF;    // has mode been changed or action done by user?
-    uint16_t uplink_mako_AXP192_temp = (M5.Axp.GetTempData() * 0.1 - 144.7) * 10.0; // ?????
 
+    uint16_t uplink_mako_AXP192_temp = M5.Axp.GetTempInAXP192() * 10.0;
     uint16_t uplink_mako_usb_voltage = M5.Axp.GetVBusVoltage() * 1000.0;
     uint16_t uplink_mako_usb_current = M5.Axp.GetVBusCurrent() * 100.0;
 
@@ -2650,7 +2709,7 @@ bool getMagHeadingNotTiltCompensated(float& newHeading)
 
 std::string getCardinal(float b)
 {
-  std::string result = "--";
+  std::string result = "---";
 
   if      (b > 337.5 || b <= 22.5) result = "N  ";  // 0
   else if (b > 22.5 && b <= 67.5) result = "NE ";  // 45
@@ -2703,6 +2762,32 @@ void getDepth(float& d, float& d_t, float& d_p, float& d_a)
   d_t = BlueRobotics_DepthSensor.temperature();
   d_p = BlueRobotics_DepthSensor.pressure() / 1000.0;
   d_a = BlueRobotics_DepthSensor.altitude();
+
+  if (d >= minimumDivingDepth)
+  {
+    startDiveTimer();
+  }
+  else
+  {
+    stopDiveTimer();
+  }
+}
+
+void startDiveTimer()
+{
+  if (diveTimerRunning == false)
+  {
+    // use the rtc
+    diveTimerRunning = true;
+  }
+}
+
+void stopDiveTimer()
+{
+  if (diveTimerRunning)
+  {
+    diveTimerRunning = false;
+  }
 }
 
 void getTempAndHumidityAndAirPressureBME280(float& h, float& t, float& p, float& p_a)
