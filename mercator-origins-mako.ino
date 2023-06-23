@@ -204,6 +204,7 @@ char locationDisplayLabel[] = "LO";
 char journeyDisplayLabel[] = "JO";
 char showLatLongDisplayLabel[] = "LL";
 char audioTestDisplayLabel[] = "AT";
+char surveyDisplayLabel[] = "SV";
 char undefinedDisplayLabel[] = "??";
 
 class navigationTarget
@@ -286,7 +287,7 @@ uint8_t graphicsCount = 0;
 
 char activity_indicator[] = "\\|/-";
 
-enum e_mako_displays {NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, SHOW_LAT_LONG_DISPLAY, AUDIO_TEST_DISPLAY};
+enum e_mako_displays {SURVEY_DISPLAY, NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, SHOW_LAT_LONG_DISPLAY, AUDIO_TEST_DISPLAY};
 const e_mako_displays first_display_rotation = NAV_COMPASS_DISPLAY;
 const e_mako_displays last_display_rotation = JOURNEY_DISPLAY;
 
@@ -1214,12 +1215,15 @@ void checkForButtonPresses()
   }
 }
 
-
-
 void refreshConsoleScreen()
 {
   switch (display_to_show)
   {
+    case SURVEY_DISPLAY:
+    {
+      drawSurveyDisplay();
+      break;
+    }
     case NAV_COMPASS_DISPLAY:
     {
       drawTargetSection();
@@ -1265,6 +1269,14 @@ void refreshConsoleScreen()
     drawPowerOnTimeOverlay();
   }
 }
+
+void drawSurveyDisplay()
+{
+  // depth
+  M5.Lcd.setCursor(5, 17);
+  M5.Lcd.printf("SURVEY DISPLAY");
+}
+
 
 void drawTargetSection()
 {
@@ -1901,6 +1913,7 @@ void sendUplinkTelemetryMessageV5()
       case JOURNEY_DISPLAY:     displayLabel[0] = journeyDisplayLabel[0]; displayLabel[1] = journeyDisplayLabel[1]; break;
       case SHOW_LAT_LONG_DISPLAY: displayLabel[0] = showLatLongDisplayLabel[0]; displayLabel[1] = showLatLongDisplayLabel[1]; break;
       case AUDIO_TEST_DISPLAY:  displayLabel[0] = audioTestDisplayLabel[0]; displayLabel[1] = audioTestDisplayLabel[1]; break;
+      case SURVEY_DISPLAY:      displayLabel[0] = surveyDisplayLabel[0]; displayLabel[1] = surveyDisplayLabel[1]; break;
       default:                  displayLabel[0] = undefinedDisplayLabel[0]; displayLabel[1] = undefinedDisplayLabel[1]; break;
     }
 
