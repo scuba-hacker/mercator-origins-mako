@@ -209,6 +209,10 @@ char audioTestDisplayLabel[] = "AT";
 char surveyDisplayLabel[] = "SV";
 char undefinedDisplayLabel[] = "??";
 
+uint32_t recordHighlightExpireTime = 0;
+uint32_t recordHighlightDisplayDuration = 3000; // 3 seconds
+bool     recordSurveyHighlight = false;
+
 class navigationTarget
 {
     static const uint8_t maxLabelLength = 24;
@@ -290,8 +294,10 @@ uint8_t graphicsCount = 0;
 char activity_indicator[] = "\\|/-";
 
 bool           diveTimerRunning = false;
-const uint8_t  minimumDivingDepth = 1;  // 1 metre
-uint16_t       secondsDurationDiving = 0;
+const uint8_t  minimumDivingDepthToRunTimer = 1;  // 1 metre
+uint16_t       minutesDurationDiving = 0;
+uint16_t       whenToStopTimerDueToLackOfDepth = 0;
+uint16_t       minsToTriggerStopDiveTimer = 4;
 
 
 enum e_mako_displays {SURVEY_DISPLAY, NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, SHOW_LAT_LONG_DISPLAY, AUDIO_TEST_DISPLAY};
@@ -431,6 +437,7 @@ void updateButtonsAndBuzzer();
 
 const uint32_t CLEARED_FIX_TIME_STAMP = 0xF0000000;
 uint32_t latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
+uint32_t latestFixTimeStampStreamOk = 0;
 
 // Magnetic heading calculation functions
 template <typename T> float magHeading(vector<T> from);
@@ -857,9 +864,10 @@ void loop()
   {
     // no gps message received, do a manual refresh of sensors and screen
     acquireAllSensorReadings(); // compass, IMU, Depth, Temp, Humidity, Pressure
-
+ 
     if (millis() > lastConsoleScreenRefresh + console_screen_refresh_minimum_interval)
     {
+      checkDivingDepthForTimer(depth);
       refreshConsoleScreen();
       lastConsoleScreenRefresh = millis();
     }
@@ -880,6 +888,8 @@ void loop()
 
   refreshGlobalStatusDisplay();
 
+  refreshDiveTimer();
+
 #ifdef INCLUDE_QUBITRO_AT_COMPILE_TIME
 // This isn't included in the build or enabled in production.
   if (connectToQubitro)
@@ -889,7 +899,7 @@ void loop()
 
 bool isGPSStreamOk()
 {
-  return (millis() - latestFixTimeStamp < minimumExpectedTimeBetweenFix);
+  return (millis() - latestFixTimeStampStreamOk < minimumExpectedTimeBetweenFix);
 }
 
 bool isInternetUploadOk()
@@ -931,7 +941,7 @@ bool processGPSMessageIfAvailable()
             USB_SERIAL.printf("\nFix: %lu Good Msg: %lu Bad Msg: %lu", fixCount, newPassedChecksum, gps.failedChecksum());
           }
 
-          latestFixTimeStamp = millis();
+          latestFixTimeStampStreamOk = latestFixTimeStamp = millis();
         }
 
         if (power_up_no_fix_byte_loop_count > -1)
@@ -956,6 +966,8 @@ bool processGPSMessageIfAvailable()
 
           acquireAllSensorReadings(); // compass, IMU, Depth, Temp, Humidity, Pressure
   
+          checkDivingDepthForTimer(depth);
+
           refreshConsoleScreen();
   
           checkForButtonPresses();
@@ -1119,114 +1131,144 @@ const uint32_t buttonPressDurationToChangeScreen = 50;
 void checkForButtonPresses()
 {
   updateButtonsAndBuzzer();
+
+  switch (display_to_show)
+  {
+    case SURVEY_DISPLAY:
+    {
+      if (p_primaryButton->wasReleasefor(1000)) // Location Display: toggle ota only
+      {
+//        toggleOTAActive();
+        // do nothing
+      }
+      else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))
+      {
+        switchToNextDisplayToShow();
+      }
   
-  if (display_to_show == LOCATION_DISPLAY)
-  {
-    if (p_primaryButton->wasReleasefor(1000)) // Location Display: toggle ota only
-    {
-      toggleOTAActive();
-    }
-    else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))
-    {
-      switchToNextDisplayToShow();
+      if (p_secondButton->wasReleasefor(500)) // Record Highlight
+      {
+        recordSurveyHighlight = true;
+        recordHighlightExpireTime = millis() + recordHighlightDisplayDuration;
+      }
+      break;
     }
 
-    if (p_secondButton->wasReleasefor(1000)) // Location Display: toggle wifi only
+    case LOCATION_DISPLAY:
     {
-      toggleWiFiActive();
+      if (p_primaryButton->wasReleasefor(1000)) // Location Display: toggle ota only
+      {
+        toggleOTAActive();
+      }
+      else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))
+      {
+        switchToNextDisplayToShow();
+      }
+  
+      if (p_secondButton->wasReleasefor(1000)) // Location Display: toggle wifi only
+      {
+        toggleWiFiActive();
+      }
+      break;
     }
-  }
-  else if (display_to_show == JOURNEY_DISPLAY)
-  {
-    if (p_primaryButton->wasReleasefor(1000)) // Journey Course Display: toggle send uplink messages
+    
+    case JOURNEY_DISPLAY:
     {
-      toggleUplinkMessageProcessAndSend();
+      if (p_primaryButton->wasReleasefor(1000)) // Journey Course Display: toggle send uplink messages
+      {
+        toggleUplinkMessageProcessAndSend();
+      }
+      else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
+      {
+        switchToNextDisplayToShow();
+      }
+  
+      if (p_secondButton->wasReleasefor(1000)) // Journey Course Display: toggle uptime
+      {
+        toggleUptimeGlobalDisplay();
+      }
+      break;
     }
-    else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
+    
+    case AUDIO_TEST_DISPLAY:
     {
-      switchToNextDisplayToShow();
+      /*
+          M5.Lcd.println("Toggle ESPNow: Top 10s\n");
+          M5.Lcd.println("Start/Stop Play: Side 0.5s\n");
+          M5.Lcd.println("Vol cycle: Side 2s\n");
+          M5.Lcd.println("Next Track: Side 5s\n");
+      */
+  
+      if (p_primaryButton->wasReleasefor(10000))    // toggle between espnow and wifi
+      {
+        toggleESPNowActive();
+      }
+      else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
+      {
+        switchToNextDisplayToShow();
+      }
+  
+      if (p_secondButton->wasReleasefor(5000)) // Skip to next track
+      {
+        publishToSilkySkipToNextTrack();
+      }
+      else if (p_secondButton->wasReleasefor(2000)) // cycle volume up and then low at max
+      {
+        publishToSilkyCycleVolumeUp();
+      }
+      else if (p_secondButton->wasReleasefor(500)) // start/stop play
+      {
+        publishToSilkyTogglePlayback();
+      }
+      break;    
     }
+    default:
+    {
+      if (p_primaryButton->wasReleasefor(10000))    // Nav Screens : emergency tweet location
+      {
+        showLatLongStartTime = millis();
+        display_to_show = SHOW_LAT_LONG_DISPLAY;
+        setTweetLocationNowFlag = true;
+        setTweetEmergencyNowFlag = true;
+        M5.Lcd.fillScreen(TFT_BLACK);
+      }
+      else if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
+      {
+        showLatLongStartTime = millis();
+        display_to_show = SHOW_LAT_LONG_DISPLAY;
+        setTweetLocationNowFlag = true;
+        M5.Lcd.fillScreen(TFT_BLACK);
+      }
+      else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
+      {
+        switchToNextDisplayToShow();
+      }
 
-    if (p_secondButton->wasReleasefor(1000)) // Journey Course Display: toggle uptime
-    {
-      toggleUptimeGlobalDisplay();
-    }
-  }
-  else if (display_to_show == AUDIO_TEST_DISPLAY)
-  {
-    /*
-        M5.Lcd.println("Toggle ESPNow: Top 10s\n");
-        M5.Lcd.println("Start/Stop Play: Side 0.5s\n");
-        M5.Lcd.println("Vol cycle: Side 2s\n");
-        M5.Lcd.println("Next Track: Side 5s\n");
-    */
-
-    if (p_primaryButton->wasReleasefor(10000))    // toggle between espnow and wifi
-    {
-      toggleESPNowActive();
-    }
-    else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
-    {
-      switchToNextDisplayToShow();
-    }
-
-    if (p_secondButton->wasReleasefor(5000)) // Skip to next track
-    {
-      publishToSilkySkipToNextTrack();
-    }
-    else if (p_secondButton->wasReleasefor(2000)) // cycle volume up and then low at max
-    {
-      publishToSilkyCycleVolumeUp();
-    }
-    else if (p_secondButton->wasReleasefor(500)) // start/stop play
-    {
-      publishToSilkyTogglePlayback();
-    }
-  }
-  else
-  {
-    if (p_primaryButton->wasReleasefor(10000))    // Nav Screens : emergency tweet location
-    {
-      showLatLongStartTime = millis();
-      display_to_show = SHOW_LAT_LONG_DISPLAY;
-      setTweetLocationNowFlag = true;
-      setTweetEmergencyNowFlag = true;
-      M5.Lcd.fillScreen(TFT_BLACK);
-    }
-    else if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
-    {
-      showLatLongStartTime = millis();
-      display_to_show = SHOW_LAT_LONG_DISPLAY;
-      setTweetLocationNowFlag = true;
-      M5.Lcd.fillScreen(TFT_BLACK);
-    }
-    else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
-    {
-      switchToNextDisplayToShow();
-    }
-
-    if (p_secondButton->wasReleasefor(10000))     // Nav Screens: force reboot on
-    {
-      // force reboot
-      esp_restart();
-    }
-    else if (p_secondButton->wasReleasefor(3000))     // Nav Screens: goto last dive target (jettie)
-    {
-      // goto buttie dive exit (the last target on the list)
-      nextTarget = diveOneTargets + 6;
-      flashNextTargetOnScreen(false);
-    }
-    else if (p_secondButton->wasReleasefor(1000))     // Nav Screens: switch to next target
-    {
-      // head to next target, if at end of target list go to the top of the list
-      if (++nextTarget == diveOneTargets + targetCount)
-        nextTarget = diveOneTargets;
-      flashNextTargetOnScreen(false);
-    }
-    else if (p_secondButton->wasReleasefor(250))      // Nav Screens: remind diver of current target
-    {
-      // don't change target - remind diver of current target
-      flashNextTargetOnScreen(true);
+      if (p_secondButton->wasReleasefor(10000))     // Nav Screens: force reboot on
+      {
+        // force reboot
+        esp_restart();
+      }
+      else if (p_secondButton->wasReleasefor(3000))     // Nav Screens: goto last dive target (jettie)
+      {
+        // goto buttie dive exit (the last target on the list)
+        nextTarget = diveOneTargets + 6;
+        flashNextTargetOnScreen(false);
+      }
+      else if (p_secondButton->wasReleasefor(1000))     // Nav Screens: switch to next target
+      {
+        // head to next target, if at end of target list go to the top of the list
+        if (++nextTarget == diveOneTargets + targetCount)
+          nextTarget = diveOneTargets;
+        flashNextTargetOnScreen(false);
+      }
+      else if (p_secondButton->wasReleasefor(250))      // Nav Screens: remind diver of current target
+      {
+        // don't change target - remind diver of current target
+        flashNextTargetOnScreen(true);
+      }
+        
+      break;
     }
   }
 }
@@ -1301,21 +1343,50 @@ void drawSurveyDisplay()
     M5.Lcd.print("\n");
     M5.Lcd.setTextSize(4);
 
-    if  (millis() - journey_clear_period > last_journey_commit_time || journey_distance == 0)
+    if (recordHighlightExpireTime != 0)
     {
-      M5.Lcd.print("    \n");
+      if (millis() < recordHighlightExpireTime)
+      {
+        M5.Lcd.printf("HIGH\n");
+      }
+      else
+      {
+        recordHighlightExpireTime = 0;
+        M5.Lcd.print("    \n");
+      }
     }
     else
     {
-      M5.Lcd.printf(" %s  \n", getCardinal(journey_course).c_str());
+      if  (millis() - journey_clear_period > last_journey_commit_time || journey_distance == 0)
+      {
+        M5.Lcd.print("    \n");
+      }
+      else
+      {
+        M5.Lcd.printf(" %3s\n", getCardinal(journey_course).c_str());
+      }
     }
-    
-    uint16_t diveDurationInMinutes = diveDurationInMinutes;
+        
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.println("\n");
+
     M5.Lcd.setTextSize(7);
-    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-    M5.Lcd.printf("%hu'\n", diveDurationInMinutes);
+
+    if (diveTimerRunning == false && minutesDurationDiving == 0)    
+      M5.Lcd.setTextColor(TFT_BLUE, TFT_BLACK);     // dive not started yet
+    else if (diveTimerRunning == false && minutesDurationDiving > 0)
+      M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);      // dive finished
+    else if (diveTimerRunning == true && whenToStopTimerDueToLackOfDepth == 0)
+      M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);    // dive in progress
+    else if (diveTimerRunning == true && whenToStopTimerDueToLackOfDepth > 0)
+      M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);   // dive in progress but not at minimum depth
+    else
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);  // shouldn't get here.
+      
+    M5.Lcd.printf("%2hu'\n", minutesDurationDiving);
 
     M5.Lcd.setTextSize(3);
+
     if (isGPSStreamOk())
       M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
     else
@@ -1825,7 +1896,7 @@ void sendUplinkTelemetryMessageV2()
 
     uint16_t uplink_mako_screen_display = 0xFFFF;     // TO DO
     uint16_t uplink_mako_seconds_on = millis() / 1000.0;
-    uint16_t uplink_mako_user_action = 0xFFFF;    // has mode been changed or action done by user?
+    uint16_t uplink_mako_user_action = getOneShotUserActionForUplink();    // action done by user?
     uint16_t uplink_mako_AXP192_temp = M5.Axp.GetTempInAXP192() * 10.0;
     uint16_t uplink_mako_usb_voltage = M5.Axp.GetVBusVoltage() * 1000.0;
     uint16_t uplink_mako_usb_current = M5.Axp.GetVBusCurrent() * 100.0;
@@ -1884,6 +1955,20 @@ void sendUplinkTelemetryMessageV2()
   }
 }
 
+enum e_user_action{NO_USER_ACTION=0x0000, HIGHLIGHT_USER_ACTION=0x0001};
+
+uint16_t getOneShotUserActionForUplink()
+{
+  int userAction = NO_USER_ACTION;
+  
+  if (recordSurveyHighlight)
+  {
+    recordSurveyHighlight = false;
+    userAction |= HIGHLIGHT_USER_ACTION;
+  }
+
+  return (uint16_t)userAction;
+}
 
 void sendUplinkTelemetryMessageV5()
 {
@@ -1915,7 +2000,7 @@ void sendUplinkTelemetryMessageV5()
     uint16_t uplink_journey_distance = journey_distance * 100.0;
     
     uint16_t uplink_mako_seconds_on = millis() / 1000.0 / 60.0;
-    uint16_t uplink_mako_user_action = 0xFFFF;    // has mode been changed or action done by user?
+    uint16_t uplink_mako_user_action = getOneShotUserActionForUplink();
 
     uint16_t uplink_mako_AXP192_temp = M5.Axp.GetTempInAXP192() * 10.0;
     uint16_t uplink_mako_usb_voltage = M5.Axp.GetVBusVoltage() * 1000.0;
@@ -2763,31 +2848,96 @@ void getDepth(float& d, float& d_t, float& d_p, float& d_a)
   d_p = BlueRobotics_DepthSensor.pressure() / 1000.0;
   d_a = BlueRobotics_DepthSensor.altitude();
 
-  if (d >= minimumDivingDepth)
+//  d = testDepthTimer();
+}
+
+float testDepthTimer()
+{
+  uint32_t now = millis();
+  if (now < 30000)        // 30s
+    return 0; 
+  else if (now < 95000)   // 1 min 35s
+    return 3;
+  else if (now < 110000)  // 1 min 50s
+    return 0;
+  else if (now < 215000)  // 3 min 35s 
+    return 4;
+  else
+    return 0;   // Should revert to 3 minutes after a further 4 minutes. at 7 min 35s
+}
+
+void checkDivingDepthForTimer(const float& d)
+{
+  if (!diveTimerRunning && minutesDurationDiving == 0 && d >= minimumDivingDepthToRunTimer)
   {
     startDiveTimer();
   }
   else
   {
-    stopDiveTimer();
+    if (diveTimerRunning)
+    {
+      if (d < minimumDivingDepthToRunTimer)
+      {
+        notifyNotAtDivingDepth();
+      }
+      else
+      {
+        // at diving depth so reset the time that dive timer is stopped if at < 1m depth continuously
+        whenToStopTimerDueToLackOfDepth = 0;
+      }
+    }
   }
+  refreshDiveTimer();
 }
 
 void startDiveTimer()
 {
-  if (diveTimerRunning == false)
-  {
-    // use the rtc
-    diveTimerRunning = true;
-  }
+  resetRealTimeClock();
+  diveTimerRunning = true;
 }
 
-void stopDiveTimer()
+// If not at diving depth for >= 10 minutes then dive timer is stopped permanently.
+void notifyNotAtDivingDepth()
 {
   if (diveTimerRunning)
   {
-    diveTimerRunning = false;
+    if (whenToStopTimerDueToLackOfDepth == 0)
+    {
+      RTC_TimeTypeDef TimeStruct;         // Hours, Minutes, Seconds
+      M5.Rtc.GetTime(&TimeStruct);
+  
+      whenToStopTimerDueToLackOfDepth = TimeStruct.Hours*60 + TimeStruct.Minutes + minsToTriggerStopDiveTimer;
+    }
+    else if (minutesDurationDiving >= whenToStopTimerDueToLackOfDepth)
+    {
+      minutesDurationDiving -= minsToTriggerStopDiveTimer;
+      diveTimerRunning = false;
+    }
   }
+}
+
+void refreshDiveTimer()
+{
+  if (diveTimerRunning)
+  {
+    RTC_TimeTypeDef TimeStruct;         // Hours, Minutes, Seconds
+    M5.Rtc.GetTime(&TimeStruct);
+    
+    minutesDurationDiving = TimeStruct.Hours*60 + TimeStruct.Minutes;
+  }
+}
+
+void resetRealTimeClock()
+{
+  M5.Lcd.fillScreen(BLACK);
+  RTC_TimeTypeDef TimeStruct;         // Hours, Minutes, Seconds 
+  TimeStruct.Hours   = 0;
+  TimeStruct.Minutes = 0;
+  TimeStruct.Seconds = 0;
+
+  M5.Rtc.SetTime(&TimeStruct);
+
+  minutesDurationDiving = 0;
 }
 
 void getTempAndHumidityAndAirPressureBME280(float& h, float& t, float& p, float& p_a)
