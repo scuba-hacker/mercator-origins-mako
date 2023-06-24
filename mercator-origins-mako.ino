@@ -208,36 +208,37 @@ char showLatLongDisplayLabel[] = "LL";
 char audioTestDisplayLabel[] = "AT";
 char surveyDisplayLabel[] = "SV";
 char thisTargetDisplayLabel[] = "TT";
-char nextTargetDisplayLabel[] = "NT";
+char nextWaypointDisplayLabel[] = "NT";
 char undefinedDisplayLabel[] = "??";
 
 uint32_t recordHighlightExpireTime = 0;
 uint32_t recordHighlightDisplayDuration = 3000; // 3 seconds
 bool     recordSurveyHighlight = false;
 
-class navigationTarget
+class navigationWaypoint
 {
     static const uint8_t maxLabelLength = 24;
 
   public:
 
     char*  _label;
-    float _lat;
-    float _long;
+    double _lat;
+    double _long;
 
-    navigationTarget()
+    navigationWaypoint()
     {
       _label[0] = NULL;
       _lat = _long = 0.0;
     }
 
-    navigationTarget(char*  label, float latitude, float longitude) : _label(label), _lat(latitude), _long(longitude)
+    navigationWaypoint(char*  label, double latitude, double longitude) : _label(label), _lat(latitude), _long(longitude)
     {
     }
 };
-const uint8_t targetCount = 10;
+/*
+const uint8_t waypointCount = 10;
 
-navigationTarget diveOneTargets[targetCount] =
+navigationWaypoint diveOneWaypoints[waypointCount] =
 {
   [0] = { ._label = "Confined\nArea", ._lat = 51.459987, ._long = -0.548600},
   [1] = { ._label = "Bus", ._lat = 51.460073, ._long = -0.548515},
@@ -250,8 +251,34 @@ navigationTarget diveOneTargets[targetCount] =
   [8] = { ._label = "Old\nJetty",  ._lat = 51.459280, ._long = -0.547084},
   [9] = { ._label = "Mark's\nGaff", ._lat = 51.391231, ._long = -0.287616}
 };
+*/
 
-navigationTarget* nextTarget = diveOneTargets;
+const uint8_t waypointCount = 20;
+navigationWaypoint diveOneWaypoints[waypointCount] =
+{
+  [0] = { ._label = "Start", ._lat = 51.3915287, ._long = -0.2874116},
+  [1] = { ._label = "Manor-Pine", ._lat = 51.3914433, ._long = -0.2868819},
+  [2] = { ._label = "Pine Gardens School", ._lat = 51.3923969, ._long = -0.2855411},
+  [3] = { ._label = "Pine-Queens", ._lat = 51.3917307, ._long = -0.2834097},
+  [4] = { ._label = "Pine-Raeburn", ._lat = 51.3917649, ._long = -0.2820406},
+  [5] = { ._label = "Stirling-Hogsmill", ._lat = 51.3917349, ._long = -0.2798634},
+  [6] = { ._label = "Elmbridge Ave", ._lat = 51.3962488, ._long = -0.2769438},
+  [7] = { ._label = "SW Corner", ._lat = 51.3971483, ._long = -0.2758105},
+  [8] = { ._label = "Path Junction", ._lat = 51.3985988, ._long = -0.275251},
+  [9] = { ._label = "Half Way Point", ._lat = 51.3987829, ._long = -0.2746287},
+  [10] = { ._label = "Centre Field", ._lat = 51.3980995, ._long = -0.2747807},
+  [11] = { ._label = "Green Lane Corner", ._lat = 51.3976176, ._long = -0.2733913},
+  [12] = { ._label = "Elmbridge Roundabout", ._lat = 51.397113, ._long = -0.2769533},
+  [13] = { ._label = "Berrylands Pub", ._lat = 51.3977556, ._long = -0.2803758},
+  [14] = { ._label = "Chiltern Roundabout", ._lat = 51.3961794, ._long = -0.2820067},
+  [15] = { ._label = "Pine Walk", ._lat = 51.3931675, ._long = -0.2835799},
+  [16] = { ._label = "Pine-Kings", ._lat = 51.3919465, ._long = -0.2843089},
+  [17] = { ._label = "Pine-Pine 2", ._lat = 51.3922843, ._long = -0.2854915},
+  [18] = { ._label = "Pine-Manor 2", ._lat = 51.3913202, ._long = -0.2869346},
+  [19] = { ._label = "End", ._lat = 51.3915538, ._long = -0.2873525}
+};
+
+navigationWaypoint* nextWaypoint = diveOneWaypoints;
 
 enum e_way_marker {BLACKOUT_MARKER, GO_ANTICLOCKWISE_MARKER, GO_AHEAD_MARKER, GO_CLOCKWISE_MARKER, GO_TURN_AROUND_MARKER, UNKNOWN_MARKER};
 enum e_direction_metric {JOURNEY_COURSE, COMPASS_HEADING};
@@ -1037,8 +1064,8 @@ void refreshAndCalculatePositionalAttributes()
 
   if (enableNavigationTargeting)
   {
-    heading_to_target = gps.courseTo(Lat, Lng, nextTarget->_lat, nextTarget->_long);
-    distance_to_target = gps.distanceBetween(Lat, Lng, nextTarget->_lat, nextTarget->_long);
+    heading_to_target = gps.courseTo(Lat, Lng, nextWaypoint->_lat, nextWaypoint->_long);
+    distance_to_target = gps.distanceBetween(Lat, Lng, nextWaypoint->_lat, nextWaypoint->_long);
   }
   else
   {
@@ -1236,7 +1263,7 @@ void checkForButtonPresses()
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
 
         // goto dive exit (the last target on the list)
-        nextTarget = diveOneTargets + 6;
+        nextWaypoint = diveOneWaypoints + waypointCount - 1;
 
         display_to_revert_to = display_to_show;
         display_to_show = NEXT_TARGET_DISPLAY;
@@ -1247,8 +1274,8 @@ void checkForButtonPresses()
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
         // head to next target, if at end of target list go to the top of the list
         
-        if (++nextTarget == diveOneTargets + targetCount)
-          nextTarget = diveOneTargets;
+        if (++nextWaypoint == diveOneWaypoints + waypointCount)
+          nextWaypoint = diveOneWaypoints;
           
         display_to_revert_to = display_to_show;
         display_to_show = NEXT_TARGET_DISPLAY;
@@ -1639,7 +1666,7 @@ void drawNextTarget()
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
   M5.Lcd.setCursor(0, 5);
 
-  M5.Lcd.printf ("Next:\n\n(%i)\n\n%s", nextTarget-diveOneTargets+1, nextTarget->_label);
+  M5.Lcd.printf ("Next:\n\n(%i)\n\n%s", nextWaypoint-diveOneWaypoints+1, nextWaypoint->_label);
 
   if (millis() > showTempDisplayEndTime)
   {
@@ -1656,7 +1683,7 @@ void drawThisTarget()
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
   M5.Lcd.setCursor(0, 5);
 
-  M5.Lcd.printf ("Towards\n\n(%i)\n\n%s", nextTarget-diveOneTargets+1, nextTarget->_label);
+  M5.Lcd.printf ("Towards\n\n(%i)\n\n%s", nextWaypoint-diveOneWaypoints+1, nextWaypoint->_label);
 
   if (millis() > showTempDisplayEndTime)
   {
@@ -1718,7 +1745,7 @@ void drawLocationStats()
   M5.Lcd.printf("Water P:%.1f% Bar", water_pressure);
 
   M5.Lcd.setCursor(5, 68);
-  M5.Lcd.printf("T:%s", nextTarget->_label);
+  M5.Lcd.printf("T:%s", nextWaypoint->_label);
 
   M5.Lcd.setCursor(5, 85);
   if (WiFi.status() == WL_CONNECTED)
@@ -2099,7 +2126,7 @@ void sendUplinkTelemetryMessageV5()
       case SHOW_LAT_LONG_DISPLAY: displayLabel[0] = showLatLongDisplayLabel[0]; displayLabel[1] = showLatLongDisplayLabel[1]; break;
       case AUDIO_TEST_DISPLAY:  displayLabel[0] = audioTestDisplayLabel[0]; displayLabel[1] = audioTestDisplayLabel[1]; break;
       case SURVEY_DISPLAY:      displayLabel[0] = surveyDisplayLabel[0]; displayLabel[1] = surveyDisplayLabel[1]; break;
-      case NEXT_TARGET_DISPLAY: displayLabel[0] = nextTargetDisplayLabel[0]; displayLabel[1] = nextTargetDisplayLabel[1]; break;
+      case NEXT_TARGET_DISPLAY: displayLabel[0] = nextWaypointDisplayLabel[0]; displayLabel[1] = nextWaypointDisplayLabel[1]; break;
       case THIS_TARGET_DISPLAY: displayLabel[0] = thisTargetDisplayLabel[0]; displayLabel[1] = thisTargetDisplayLabel[1]; break;      
       default:                  displayLabel[0] = undefinedDisplayLabel[0]; displayLabel[1] = undefinedDisplayLabel[1]; break;
     }
