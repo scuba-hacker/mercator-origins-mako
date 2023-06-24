@@ -153,8 +153,8 @@ const bool enableOTAServer = true; // OTA updates
 AsyncWebServer asyncWebServer(80);
 // OTA updates end
 
-uint32_t showLatLongStartTime = 0;
-const uint32_t showLatLongHoldDuration = 5000;
+uint32_t showTempDisplayEndTime = 0xFFFFFFFF;
+const uint32_t showTempDisplayHoldDuration = 5000;
 
 char uplink_preamble_pattern[] = "MBJAEJ";
 char uplinkTestMessages[][6] = {"MSG0 ", "MSG1 ", "MSG2 ", "MSG3 "};
@@ -207,6 +207,8 @@ char journeyDisplayLabel[] = "JO";
 char showLatLongDisplayLabel[] = "LL";
 char audioTestDisplayLabel[] = "AT";
 char surveyDisplayLabel[] = "SV";
+char thisTargetDisplayLabel[] = "TT";
+char nextTargetDisplayLabel[] = "NT";
 char undefinedDisplayLabel[] = "??";
 
 uint32_t recordHighlightExpireTime = 0;
@@ -300,11 +302,12 @@ uint16_t       whenToStopTimerDueToLackOfDepth = 0;
 uint16_t       minsToTriggerStopDiveTimer = 4;
 
 
-enum e_mako_displays {SURVEY_DISPLAY, NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, SHOW_LAT_LONG_DISPLAY, AUDIO_TEST_DISPLAY};
+enum  e_mako_displays {SURVEY_DISPLAY, NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, SHOW_LAT_LONG_DISPLAY, AUDIO_TEST_DISPLAY, NEXT_TARGET_DISPLAY, THIS_TARGET_DISPLAY};
 const e_mako_displays first_display_rotation = SURVEY_DISPLAY;
 const e_mako_displays last_display_rotation = JOURNEY_DISPLAY;
 
 e_mako_displays display_to_show = first_display_rotation;
+e_mako_displays display_to_revert_to = first_display_rotation;
 e_mako_displays previous_display_shown = first_display_rotation;
 
 void switchToNextDisplayToShow()
@@ -503,29 +506,13 @@ void updateButtonsAndBuzzer()
   M5.Beep.update();
 }
 
-void flashNextTargetOnScreen(const bool continueOnCourse)
-{
-  M5.Lcd.fillScreen(TFT_BLACK);
-  M5.Lcd.setTextSize(3);
-  M5.Lcd.setTextFont(1);
-  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  M5.Lcd.setCursor(0, 5);
-  if (continueOnCourse)
-    M5.Lcd.printf ("Continue to:\n\n%s", nextTarget->_label);
-  else
-    M5.Lcd.printf ("Goto next:\n\n%s", nextTarget->_label);
-  delay(2500);
-  M5.Lcd.fillScreen(TFT_BLACK);
-}
-
-
 void setup()
 {
   M5.begin();
 
   M5.Lcd.setTextSize(tb_buffer_chosenTextSize);
 
-  tb_display_init(tb_buffer_screen_orientation, M5.Lcd.textsize); // MBJMBJ - change this
+  tb_display_init(tb_buffer_screen_orientation, M5.Lcd.textsize);
   tb_display_print_String("Mercator Origins - Text Buffer Enabled\n");
   delay(1000);
 
@@ -1138,7 +1125,6 @@ void checkForButtonPresses()
     {
       if (p_primaryButton->wasReleasefor(1000)) // Location Display: toggle ota only
       {
-//        toggleOTAActive();
         // do nothing
       }
       else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))
@@ -1224,19 +1210,15 @@ void checkForButtonPresses()
     }
     default:
     {
-      if (p_primaryButton->wasReleasefor(10000))    // Nav Screens : emergency tweet location
+      if (p_primaryButton->wasReleasefor(10000))
       {
-        showLatLongStartTime = millis();
-        display_to_show = SHOW_LAT_LONG_DISPLAY;
-        setTweetLocationNowFlag = true;
-        setTweetEmergencyNowFlag = true;
-        M5.Lcd.fillScreen(TFT_BLACK);
+          // not used
       }
       else if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
       {
-        showLatLongStartTime = millis();
+        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration;
+        display_to_revert_to = display_to_show;
         display_to_show = SHOW_LAT_LONG_DISPLAY;
-        setTweetLocationNowFlag = true;
         M5.Lcd.fillScreen(TFT_BLACK);
       }
       else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
@@ -1251,21 +1233,35 @@ void checkForButtonPresses()
       }
       else if (p_secondButton->wasReleasefor(3000))     // Nav Screens: goto last dive target (jettie)
       {
-        // goto buttie dive exit (the last target on the list)
+        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
+
+        // goto dive exit (the last target on the list)
         nextTarget = diveOneTargets + 6;
-        flashNextTargetOnScreen(false);
+
+        display_to_revert_to = display_to_show;
+        display_to_show = NEXT_TARGET_DISPLAY;
+        M5.Lcd.fillScreen(TFT_BLACK);
       }
       else if (p_secondButton->wasReleasefor(1000))     // Nav Screens: switch to next target
       {
+        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
         // head to next target, if at end of target list go to the top of the list
+        
         if (++nextTarget == diveOneTargets + targetCount)
           nextTarget = diveOneTargets;
-        flashNextTargetOnScreen(false);
+          
+        display_to_revert_to = display_to_show;
+        display_to_show = NEXT_TARGET_DISPLAY;
+        M5.Lcd.fillScreen(TFT_BLACK);
       }
-      else if (p_secondButton->wasReleasefor(250))      // Nav Screens: remind diver of current target
+      else if (p_secondButton->wasReleasefor(50))      // Nav Screens: remind diver of current target
       {
+        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration  / 3;
+
         // don't change target - remind diver of current target
-        flashNextTargetOnScreen(true);
+        display_to_revert_to = display_to_show;
+        display_to_show = THIS_TARGET_DISPLAY;
+        M5.Lcd.fillScreen(TFT_BLACK);
       }
         
       break;
@@ -1302,6 +1298,16 @@ void refreshConsoleScreen()
     case SHOW_LAT_LONG_DISPLAY:
     {
       drawLatLong();
+      break;
+    }
+    case NEXT_TARGET_DISPLAY:
+    {
+      drawNextTarget();
+      break;
+    }
+    case THIS_TARGET_DISPLAY:
+    {
+      drawThisTarget();
       break;
     }
     case LOCATION_DISPLAY:
@@ -1626,6 +1632,40 @@ void drawCourseSection()
     refreshDepthDisplay();
 }
 
+void drawNextTarget()
+{
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextFont(1);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+  M5.Lcd.setCursor(0, 5);
+
+  M5.Lcd.printf ("Next:\n\n(%i)\n\n%s", nextTarget-diveOneTargets+1, nextTarget->_label);
+
+  if (millis() > showTempDisplayEndTime)
+  {
+    showTempDisplayEndTime = 0xFFFFFFFF;
+    display_to_show = display_to_revert_to;
+    M5.Lcd.fillScreen(TFT_BLACK);
+  }
+}
+
+void drawThisTarget()
+{
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextFont(1);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+  M5.Lcd.setCursor(0, 5);
+
+  M5.Lcd.printf ("Towards\n\n(%i)\n\n%s", nextTarget-diveOneTargets+1, nextTarget->_label);
+
+  if (millis() > showTempDisplayEndTime)
+  {
+    showTempDisplayEndTime = 0xFFFFFFFF;
+    display_to_show = display_to_revert_to;
+    M5.Lcd.fillScreen(TFT_BLACK);
+  }
+}
+
 void drawLatLong()
 {
   M5.Lcd.setRotation(1);
@@ -1653,10 +1693,11 @@ void drawLatLong()
   M5.Lcd.printf("%02d:%02d:%02d\n", gps.time.hour(), gps.time.minute(), gps.time.second());
   M5.Lcd.printf("%02d/%02d/%02d\n", gps.date.day(), gps.date.month(), gps.date.year());
 
-  if (millis() > showLatLongStartTime + showLatLongHoldDuration)
+  if (millis() > showTempDisplayEndTime)
   {
-    showLatLongStartTime = 0;
-    display_to_show = NAV_COMPASS_DISPLAY;
+    showTempDisplayEndTime = 0xFFFFFFFF;
+    display_to_show = display_to_revert_to;
+    M5.Lcd.fillScreen(TFT_BLACK);
   }
 }
     
@@ -2058,6 +2099,8 @@ void sendUplinkTelemetryMessageV5()
       case SHOW_LAT_LONG_DISPLAY: displayLabel[0] = showLatLongDisplayLabel[0]; displayLabel[1] = showLatLongDisplayLabel[1]; break;
       case AUDIO_TEST_DISPLAY:  displayLabel[0] = audioTestDisplayLabel[0]; displayLabel[1] = audioTestDisplayLabel[1]; break;
       case SURVEY_DISPLAY:      displayLabel[0] = surveyDisplayLabel[0]; displayLabel[1] = surveyDisplayLabel[1]; break;
+      case NEXT_TARGET_DISPLAY: displayLabel[0] = nextTargetDisplayLabel[0]; displayLabel[1] = nextTargetDisplayLabel[1]; break;
+      case THIS_TARGET_DISPLAY: displayLabel[0] = thisTargetDisplayLabel[0]; displayLabel[1] = thisTargetDisplayLabel[1]; break;      
       default:                  displayLabel[0] = undefinedDisplayLabel[0]; displayLabel[1] = undefinedDisplayLabel[1]; break;
     }
 
