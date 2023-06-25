@@ -365,6 +365,7 @@ HardwareSerial float_serial(uart_number);   // UART number 2: This uses Grove SC
 double Lat, Lng;
 String  lat_str , lng_str;
 int satellites = 0;
+char internetUploadStatusGood = false;
 double b, c = 0;
 int power_up_no_fix_byte_loop_count = 0;
 
@@ -918,8 +919,7 @@ bool isGPSStreamOk()
 
 bool isInternetUploadOk()
 {
-  // will need a message from the float for this.
-  return true;
+  return internetUploadStatusGood;
 }
 
 bool processGPSMessageIfAvailable()
@@ -1021,7 +1021,8 @@ void refreshAndCalculatePositionalAttributes()
   Lng = gps.location.lng();
   lng_str = String(Lng , 7);
   satellites = gps.satellites.value();
-
+  internetUploadStatusGood = (gps.altitudeUnitsGeoid.value() == 'M');
+  
   if (enableRecentCourseCalculation)
   {
     if (millis() - last_journey_commit_time > journey_calc_period)
