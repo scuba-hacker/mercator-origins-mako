@@ -22,7 +22,8 @@ uint16_t ESPNowMessagesFailedToDeliver = 0;
 uint8_t ESPNow_data_to_send = 0;
 
 bool soundsOn = true;
- 
+const uint8_t defaultSilkyVolume = 6;
+uint8_t silkyVolume = defaultSilkyVolume;
 
 esp_now_peer_info_t ESPNow_slave;
 const uint8_t ESPNOW_CHANNEL = 1;
@@ -33,6 +34,7 @@ const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
 const uint8_t SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK = (uint8_t)'A'; // 500 ms
 const uint8_t SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP = (uint8_t)'B'; // 2000 ms
 const uint8_t SILKY_ESPNOW_COMMAND_NEXT_TRACK = (uint8_t)'C';   // 5000 ms
+const uint8_t SILKY_ESPNOW_COMMAND_STOP_PLAYBACK = (uint8_t)'D';   // 10000 ms
 
 enum e_soundFX {SFX_BASS='0', SFX_HARPLOW='1',SFX_HARPRASP='2',SFX_HIPITCH='3',SFX_KEYCLICK='4',SFX_MEDBUZZ='5',SFX_POP='6'};
 
@@ -89,14 +91,17 @@ const bool enableNavigationGraphics = true;
 const bool enableNavigationTargeting = true;
 const bool enableRecentCourseCalculation = true;
 bool enableGlobalUptimeDisplay = false;    // adds a timer to compass heading display so can see if a crash/reboot has happened
+
 bool enableWifiAtStartup = false;   // set to true only if no espnow at startup
 bool enableESPNowAtStartup = true;  // set to true only if no wifi at startup
 
 bool otaActiveListening = false; // OTA updates toggle
-bool otaFirstInit = false;       // Start OTA at boot
+bool otaFirstInit = false;       // Start OTA at boot if WiFi enabled
 
 bool enableESPNow = true;       //
-bool ESPNowActive = false;       // can be toggled through interface.
+bool ESPNowActive = false;       // will be set to true on startup if set above - can be toggled through interface.
+
+bool isPairedWithAudioPod = false;    // starts off not paired
 
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 
@@ -346,9 +351,9 @@ uint16_t       whenToStopTimerDueToLackOfDepth = 0;
 uint16_t       minsToTriggerStopDiveTimer = 10;
 
 
-enum  e_mako_displays {AUDIO_TEST_DISPLAY, SURVEY_DISPLAY, NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, SHOW_LAT_LONG_DISPLAY, NEXT_TARGET_DISPLAY, THIS_TARGET_DISPLAY};
-const e_mako_displays first_display_rotation = AUDIO_TEST_DISPLAY;
-const e_mako_displays last_display_rotation = JOURNEY_DISPLAY;
+enum  e_mako_displays {SURVEY_DISPLAY, NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, AUDIO_TEST_DISPLAY, SHOW_LAT_LONG_DISPLAY, NEXT_TARGET_DISPLAY, THIS_TARGET_DISPLAY};
+const e_mako_displays first_display_rotation = SURVEY_DISPLAY;
+const e_mako_displays last_display_rotation = AUDIO_TEST_DISPLAY;
 
 e_mako_displays display_to_show = first_display_rotation;
 e_mako_displays display_to_revert_to = first_display_rotation;
@@ -1173,11 +1178,7 @@ void checkForButtonPresses()
   {
     case SURVEY_DISPLAY:
     {
-      if (p_primaryButton->wasReleasefor(1000)) // Location Display: toggle ota only
-      {
-        // do nothing
-      }
-      else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))
+      if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))
       {
         switchToNextDisplayToShow();
       }
@@ -1194,8 +1195,7 @@ void checkForButtonPresses()
     {
       if (p_primaryButton->wasReleasefor(1000)) // Location Display: toggle ota only
       {
-//        toggleOTAActive();
-
+        toggleOTAActive();
       }
       else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))
       {
@@ -1243,9 +1243,15 @@ void checkForButtonPresses()
       else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
       {
         switchToNextDisplayToShow();
+      }  
+
+      if (p_secondButton->wasReleasefor(10000)) // toggle sounds on and off
+      {
+        toggleSound();
+        publishToSilkyStopPlayback();
+        notifySoundsOnOffChanged();
       }
-  
-      if (p_secondButton->wasReleasefor(5000)) // Skip to next track
+      else if (p_secondButton->wasReleasefor(5000)) // Skip to next track
       {
         publishToSilkyTogglePlayback();
       }
@@ -1261,11 +1267,7 @@ void checkForButtonPresses()
     }
     default:
     {
-      if (p_primaryButton->wasReleasefor(10000))
-      {
-          // not used
-      }
-      else if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
+      if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
       {
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration;
         display_to_revert_to = display_to_show;
@@ -1759,9 +1761,9 @@ void drawLocationStats()
   M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
 
   M5.Lcd.setCursor(5, 0);
-  M5.Lcd.printf("La:%.5f   ", Lat);
+  M5.Lcd.printf("La:%.9f   ", Lat);
   M5.Lcd.setCursor(5, 17);
-  M5.Lcd.printf("Lo:%.5f   ", Lng);
+  M5.Lcd.printf("Lo:%.9f   ", Lng);
   M5.Lcd.setCursor(5, 34);
 
   M5.Lcd.printf("Depth:%.0f m  ", depth);
@@ -1811,16 +1813,28 @@ void drawJourneyStats()
 void drawAudioTest()
 {
   M5.Lcd.setRotation(1);
-  M5.Lcd.setTextSize(2);
+  M5.Lcd.setTextSize(3);
   M5.Lcd.setCursor(0, 0);
 
-  M5.Lcd.setTextColor(TFT_BLACK, TFT_GREEN);
-  M5.Lcd.println("AUDIO\nTEST");
-  
-  USB_SERIAL.println("Toggle ESPNow: Top 10s\n");
-  USB_SERIAL.println("Start/Stop Play: Side 0.5s\n");
-  USB_SERIAL.println("Vol cycle: Side 2s\n");
-  USB_SERIAL.println("Next Track: Side 5s\n");
+  M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+  M5.Lcd.printf("AUDIO TEST\nESPNow ");
+
+  if (ESPNowActive)
+    M5.Lcd.println("On");
+  else
+    M5.Lcd.println("Off");
+
+  M5.Lcd.println(isPairedWithAudioPod ? "Audio Paired" : "Not Paired");
+
+  M5.Lcd.println(isPairedWithAudioPod && soundsOn ? "Sounds On" : "Sounds Off");
+
+  if (writeLogToSerial)
+  {
+    USB_SERIAL.println("Toggle ESPNow: Top 10s\n");
+    USB_SERIAL.println("Start/Stop Play: Side 0.5s\n");
+    USB_SERIAL.println("Vol cycle: Side 2s\n");
+    USB_SERIAL.println("Next Track: Side 5s\n");
+  }
 }
 
 void drawNullDisplay()
@@ -3111,7 +3125,7 @@ void notifyESPNowNotActive()
 {
   M5.Lcd.fillScreen(TFT_RED);
   M5.Lcd.setCursor(0, 0);
-  M5.Lcd.println("Error: Enable ESPNow");
+  M5.Lcd.println("Error: ESPNow inactive");
   delay (2000);
   M5.Lcd.fillScreen(TFT_BLACK);
 }
@@ -3156,11 +3170,9 @@ void publishToSilkySkipToNextTrack()
     const uint8_t *peer_addr = ESPNow_slave.peer_addr;
     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
+    delay(250);
+    M5.Lcd.fillScreen(TFT_BLACK);
     displayESPNowSendDataResult(result);
-  }
-  else
-  {
-    notifyESPNowNotActive();
   }
 }
 
@@ -3170,17 +3182,21 @@ void publishToSilkyCycleVolumeUp()
   {
     M5.Lcd.fillScreen(TFT_GREEN);
     M5.Lcd.setCursor(0, 0);
-    M5.Lcd.println("Silky:\nCycle volume up");
+    if (silkyVolume == 9)
+      silkyVolume = 1;
+    else
+      silkyVolume++;
+      
+    M5.Lcd.printf("Silky:\nCycle volume up %u",silkyVolume);
+    
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP;
     const uint8_t *peer_addr = ESPNow_slave.peer_addr;
     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
+    delay(250);
+    M5.Lcd.fillScreen(TFT_BLACK);
     displayESPNowSendDataResult(result);
-  }
-  else
-  {
-    notifyESPNowNotActive();
   }
 }
 
@@ -3196,11 +3212,39 @@ void publishToSilkyTogglePlayback()
     const uint8_t *peer_addr = ESPNow_slave.peer_addr;
     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
+    delay(250);
+    M5.Lcd.fillScreen(TFT_BLACK);
     displayESPNowSendDataResult(result);
   }
-  else
+}
+
+void publishToSilkyStopPlayback()
+{
+  if (ESPNowActive && !soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
   {
-    notifyESPNowNotActive();
+    M5.Lcd.fillScreen(TFT_GREEN);
+    M5.Lcd.setCursor(0, 0);
+    M5.Lcd.println("Silky:\Stop Playback");
+    // Send byte command to Silky to say skip to next track
+    ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_STOP_PLAYBACK;
+    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+    esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+
+    delay(250);
+    M5.Lcd.fillScreen(TFT_BLACK);
+    displayESPNowSendDataResult(result);
+  }
+}
+
+void notifySoundsOnOffChanged()
+{
+  if (ESPNowActive && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  {
+    M5.Lcd.fillScreen(TFT_GREEN);
+    M5.Lcd.setCursor(0, 0);
+    M5.Lcd.println(soundsOn ? "Silky:\nSounds On" : "Silky:\nSounds Off");  
+    delay(500);
+    M5.Lcd.fillScreen(TFT_BLACK);
   }
 }
 
@@ -3210,28 +3254,33 @@ bool pairWithAudioPod()
   bool isPaired = false;
   while(maxAttempts-- && !isPaired)
   {
-    ESPNowScanForSlave();
+    bool result = ESPNowScanForSlave();
 
-    if (ESPNow_slave.channel == ESPNOW_CHANNEL)
+    if (result && ESPNow_slave.channel == ESPNOW_CHANNEL)
     { 
       // check if slave channel is defined
       isPaired = ESPNowManageSlave();
-      M5.Lcd.println("Paired");
+      M5.Lcd.println("Paired with Audio Pod");
     }
     else
     {
       ESPNow_slave.channel = ESPNOW_NO_SLAVE_CHANNEL_FLAG;
-      M5.Lcd.println("Not Paired");
+      M5.Lcd.println("Not Paired: Audio");
     }
   }
+
+  delay(500);
+  
+  M5.Lcd.fillScreen(TFT_BLACK);
+  
   return isPaired;
 }
-
 
 void toggleESPNowActive()
 {
   if (enableESPNow)
   {
+    M5.Lcd.fillScreen(TFT_BLACK);
     M5.Lcd.setCursor(0, 0);
     M5.Lcd.setTextSize(2);
 
@@ -3250,50 +3299,58 @@ void toggleESPNowActive()
         disabledWiFi = true;
       }
 
-      connectESPNow();
-      ESPNowActive = true;
+      M5.Lcd.setTextSize(2);
+      M5.Lcd.setCursor(0,0);
 
-      if (disabledWiFi)
-      {
-        M5.Lcd.printf("Wifi Disabled\nESPNow Enabled");
-        USB_SERIAL.println("Wifi Disabled\nESPNow Enabled");
-      }
-      else
-      {
-        M5.Lcd.printf("ESPNow Enabled");
-        USB_SERIAL.println("ESPNow Enabled");
-      }
+      bool success = connectESPNow();
 
-      M5.Lcd.setTextSize(1);
-
-      bool pairedWithAudioPod = pairWithAudioPod();
-      
-      if (pairedWithAudioPod)
+      if (success)
       {
-        M5.Lcd.printf("Slave found");
-        slaveFound = true;
-      }
-      else
-      {
-        M5.Lcd.printf("Slave not found");
-      }
+        ESPNowActive = true;
   
-      if (disabledWiFi)
-        delay (2000);
-    }
+        M5.Lcd.println("ESPNow Enabled");
+        if (writeLogToSerial)
+          USB_SERIAL.println("Wifi Disabled\nESPNow Enabled");
 
-    if (ESPNowActive == false || !slaveFound)
-    {
+        isPairedWithAudioPod = pairWithAudioPod();
+        
+        if (isPairedWithAudioPod)
+        {
+          slaveFound = true;
+        }
+        else
+        {
+          TeardownESPNow();
+          ESPNowActive = false;
+    
+          M5.Lcd.println("ESPNow Disabled");
+          if (writeLogToSerial)
+            USB_SERIAL.println("ESPNow Disabled");            
+        }
+      }
+      else
+      {
+        ESPNowActive = false;
+        isPairedWithAudioPod = false;
+      }
+    }
+    else
+    { 
       // disconnect ESPNow;
       TeardownESPNow();
+ 
       ESPNowActive = false;
+      isPairedWithAudioPod = false;
 
-      M5.Lcd.printf("ESPNow Disabled");
+      M5.Lcd.println("ESPNow Disabled");
+      
       if (writeLogToSerial)
         USB_SERIAL.println("ESPNow Disabled");
-
-      delay (2000);
     }
+    
+    delay (2000);
+  
+    M5.Lcd.fillScreen(TFT_BLACK);
   }
 }
 
@@ -3406,7 +3463,9 @@ bool connectESPNow()
   
   if (writeLogToSerial)
     USB_SERIAL.println("ESPNow/Basic/Master Example");
+    
   esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  
   // This is the mac address of the Master in Station Mode
   if (writeLogToSerial)
   {
@@ -3415,11 +3474,16 @@ bool connectESPNow()
   }
 
   // Init ESPNow with a fallback logic
-  InitESPNow();
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of Trasnmitted packet
-  esp_now_register_send_cb(OnESPNowDataSent);
-  return true;
+  bool result =  InitESPNow();
+
+  if (result)
+  {
+    // Once ESPNow is successfully Init, we will register for Send CB to
+    // get the status of Trasnmitted packet
+    esp_now_register_send_cb(OnESPNowDataSent);
+  }
+  
+  return result;
 }
 
 bool connectWiFiNoOTA(const char* _ssid, const char* _password, const char* label, uint32_t timeout)
@@ -3852,8 +3916,10 @@ void sendLocationByEmail()
 #endif
 
 // Init ESP Now with fallback
-void InitESPNow() {
+bool InitESPNow() 
+{
   WiFi.disconnect();
+  
   if (esp_now_init() == ESP_OK) 
   { 
     if (writeLogToSerial)
@@ -3867,6 +3933,8 @@ void InitESPNow() {
     // do nothing
     ESPNowActive = false;
   }
+  
+  return ESPNowActive;
 }
 
 bool TeardownESPNow()
@@ -3879,6 +3947,7 @@ bool TeardownESPNow()
     ESPNowActive = false;
     result = true;
   }
+  
   return result;
 }
 
@@ -3940,11 +4009,13 @@ void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 
 
 // Scan for slaves in AP mode
-void ESPNowScanForSlave() 
+bool ESPNowScanForSlave()
 {
+  bool slaveFound = false;
+  
   int8_t scanResults = WiFi.scanNetworks();
   // reset on each scan
-  bool slaveFound = 0;
+ 
   memset(&ESPNow_slave, 0, sizeof(ESPNow_slave));
 
   if (writeLogToSerial)
@@ -4007,7 +4078,7 @@ void ESPNowScanForSlave()
         ESPNow_slave.channel = ESPNOW_CHANNEL; // pick a channel
         ESPNow_slave.encrypt = 0; // no encryption
 
-        slaveFound = 1;
+        slaveFound = true;
         // we are planning to have only one slave in this example;
         // Hence, break after we find one, to be a bit efficient
         break;
@@ -4015,26 +4086,31 @@ void ESPNowScanForSlave()
     }
   }
 
-  if (writeLogToSerial)
+  if (slaveFound) 
   {
-    if (slaveFound) 
-    {
+    M5.Lcd.println("Slave Found");
+    if (writeLogToSerial)
       USB_SERIAL.println("Slave Found, processing..");
-    } 
-    else 
-    {
+  } 
+  else 
+  {
+    M5.Lcd.println("Slave Not Found");
+    if (writeLogToSerial)
       USB_SERIAL.println("Slave Not Found, trying again.");
-    }
   }
   
   // clean up ram
   WiFi.scanDelete();
+
+  return slaveFound;
 }
 
 // Check if the slave is already paired with the master.
 // If not, pair the slave with master
 bool ESPNowManageSlave() 
 {
+  bool result = false;
+  
   if (ESPNow_slave.channel == ESPNOW_CHANNEL) 
   {
     if (ESPNOW_DELETEBEFOREPAIR) 
@@ -4048,12 +4124,14 @@ bool ESPNowManageSlave()
     // check if the peer exists
     bool exists = esp_now_is_peer_exist(ESPNow_slave.peer_addr);
     
-    if ( exists) 
+    if (exists) 
     {
       // Slave already paired.
       if (writeLogToSerial)
         USB_SERIAL.println("Already Paired");
-      return true;
+
+      M5.Lcd.println("Already paired");
+      result = true;
     } 
     else 
     {
@@ -4065,44 +4143,45 @@ bool ESPNowManageSlave()
         // Pair success
         if (writeLogToSerial)
           USB_SERIAL.println("Pair success");
-        return true;
+        M5.Lcd.println("Pair success");
+        result = true;
       } 
       else if (addStatus == ESP_ERR_ESPNOW_NOT_INIT) 
       {
         // How did we get so far!!
         if (writeLogToSerial)
           USB_SERIAL.println("ESPNOW Not Init");
-        return false;
+        result = false;
       } 
       else if (addStatus == ESP_ERR_ESPNOW_ARG) 
       {
         if (writeLogToSerial)
             USB_SERIAL.println("Invalid Argument");
-        return false;
+        result = false;
       } 
       else if (addStatus == ESP_ERR_ESPNOW_FULL) 
       {
         if (writeLogToSerial)
             USB_SERIAL.println("Peer list full");
-        return false;
+        result = false;
       } 
       else if (addStatus == ESP_ERR_ESPNOW_NO_MEM) 
       {
         if (writeLogToSerial)
           USB_SERIAL.println("Out of memory");
-        return false;
+        result = false;
       } 
       else if (addStatus == ESP_ERR_ESPNOW_EXIST) 
       {
         if (writeLogToSerial)
           USB_SERIAL.println("Peer Exists");
-        return true;
+        result = true;
       } 
       else 
       {
         if (writeLogToSerial)
           USB_SERIAL.println("Not sure what happened");
-        return false;
+        result = false;
       }
     }
   }
@@ -4111,8 +4190,12 @@ bool ESPNowManageSlave()
     // No slave found to process
     if (writeLogToSerial)
       USB_SERIAL.println("No Slave found to process");
-    return false;
+    
+    M5.Lcd.println("No Slave found to process");
+    result = false;
   }
+
+  return result;
 }
 
 void ESPNowDeletePeer() 
