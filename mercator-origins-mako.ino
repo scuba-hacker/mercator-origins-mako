@@ -557,8 +557,8 @@ void setup()
 
   M5.Lcd.setTextSize(tb_buffer_chosenTextSize);
 
-  tb_display_init(tb_buffer_screen_orientation, M5.Lcd.textsize);
-  tb_display_print_String("Mercator Origins - Text Buffer Enabled\n");
+//  tb_display_init(tb_buffer_screen_orientation, M5.Lcd.textsize);
+//  tb_display_print_String("Mercator Origins - Text Buffer Enabled\n");
   delay(1000);
 
   if (enableIMUSensor)
@@ -834,7 +834,7 @@ void loop_no_gps()
 
     //print the proximity reading when the interrupt pin goes low
     if(!digitalRead(GESTURE_INT_PIN)){
-      Serial.println(Adafruit_GestureSensor.readProximity());
+      USB_SERIAL.println(Adafruit_GestureSensor.readProximity());
 
       //clear the interrupt
       Adafruit_GestureSensor.clearInterrupt();
@@ -3157,8 +3157,6 @@ void publishToSilkySkipToNextTrack()
     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
     displayESPNowSendDataResult(result);
-    delay(100);
-    M5.Lcd.fillScreen(TFT_BLACK);
   }
   else
   {
@@ -3179,8 +3177,6 @@ void publishToSilkyCycleVolumeUp()
     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
     displayESPNowSendDataResult(result);
-    delay(100);
-    M5.Lcd.fillScreen(TFT_BLACK);
   }
   else
   {
@@ -3201,8 +3197,6 @@ void publishToSilkyTogglePlayback()
     esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
     displayESPNowSendDataResult(result);
-    delay(100);
-    M5.Lcd.fillScreen(TFT_BLACK);
   }
   else
   {
@@ -3241,6 +3235,8 @@ void toggleESPNowActive()
     M5.Lcd.setCursor(0, 0);
     M5.Lcd.setTextSize(2);
 
+    bool slaveFound = false;
+    
     bool disabledWiFi = false;
     
     if (ESPNowActive == false)
@@ -3271,8 +3267,12 @@ void toggleESPNowActive()
       M5.Lcd.setTextSize(1);
 
       bool pairedWithAudioPod = pairWithAudioPod();
+      
       if (pairedWithAudioPod)
+      {
         M5.Lcd.printf("Slave found");
+        slaveFound = true;
+      }
       else
       {
         M5.Lcd.printf("Slave not found");
@@ -3281,14 +3281,16 @@ void toggleESPNowActive()
       if (disabledWiFi)
         delay (2000);
     }
-    else
+
+    if (ESPNowActive == false || !slaveFound)
     {
       // disconnect ESPNow;
       TeardownESPNow();
       ESPNowActive = false;
 
       M5.Lcd.printf("ESPNow Disabled");
-      USB_SERIAL.println("ESPNow Disabled");
+      if (writeLogToSerial)
+        USB_SERIAL.println("ESPNow Disabled");
 
       delay (2000);
     }
@@ -3299,6 +3301,9 @@ void toggleWiFiActive()
 {
   M5.Lcd.fillScreen(TFT_ORANGE);
   M5.Lcd.setCursor(0, 0);
+
+  if (ESPNowActive)
+    toggleESPNowActive();
 
   if (WiFi.status() == WL_CONNECTED)
   {
@@ -3398,11 +3403,17 @@ bool connectESPNow()
 {
   //Set device in STA mode to begin with
   WiFi.mode(WIFI_STA);
-  Serial.println("ESPNow/Basic/Master Example");
+  
+  if (writeLogToSerial)
+    USB_SERIAL.println("ESPNow/Basic/Master Example");
   esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
   // This is the mac address of the Master in Station Mode
-  Serial.print("STA MAC: "); Serial.println(WiFi.macAddress());
-  Serial.print("STA CHANNEL "); Serial.println(WiFi.channel());
+  if (writeLogToSerial)
+  {
+    USB_SERIAL.print("STA MAC: "); USB_SERIAL.println(WiFi.macAddress());
+    USB_SERIAL.print("STA CHANNEL "); USB_SERIAL.println(WiFi.channel());
+  }
+
   // Init ESPNow with a fallback logic
   InitESPNow();
   // Once ESPNow is successfully Init, we will register for Send CB to
@@ -3624,7 +3635,6 @@ bool isMagnetPresentHallSensor()
 #ifdef INCLUDE_QUBITRO_AT_COMPILE_TIME
 bool qubitro_connect()
 {
-
   bool success = true;
 
   if (connectToQubitro && WiFi.status() == WL_CONNECTED)
@@ -3632,18 +3642,23 @@ bool qubitro_connect()
     qubitro_mqttClient.setId(qubitro_device_id);
     qubitro_mqttClient.setDeviceIdToken(qubitro_device_id, qubitro_device_token);
 
-    Serial.println("Connecting to Qubitro...");
+    if (writeLogToSerial)
+      USB_SERIAL.println("Connecting to Qubitro...");
 
     if (!qubitro_mqttClient.connect(qubitro_host, qubitro_port))
     {
-      Serial.print("Connection failed. Error code: ");
-      Serial.println(qubitro_mqttClient.connectError());
-      Serial.println("Visit docs.qubitro.com or create a new issue on github.com/qubitro");
+      if (writeLogToSerial)
+      {
+        USB_SERIAL.print("Connection failed. Error code: ");
+        USB_SERIAL.println(qubitro_mqttClient.connectError());
+        USB_SERIAL.println("Visit docs.qubitro.com or create a new issue on github.com/qubitro");
+      }
       success = false;
     }
     else
     {
-      Serial.println("Connected to Qubitro.");
+      if (writeLogToSerial)
+        USB_SERIAL.println("Connected to Qubitro.");
     }
 
     qubitro_mqttClient.subscribe(qubitro_device_id);
@@ -3719,7 +3734,7 @@ bool uploadTelemetryToQubitro()
       {
         char qubitro_payload[4096];
         buildFullFatBonzaTelemetryMessage(qubitro_payload);
-        //Serial.println(qubitro_payload);
+        //USB_SERIAL.println(qubitro_payload);
 
         qubitro_mqttClient.poll();
         qubitro_mqttClient.beginMessage(qubitro_device_id);
@@ -3728,26 +3743,31 @@ bool uploadTelemetryToQubitro()
         if (endMessageResult == 1)
         {
           success = true;
-          Serial.printf("Qubitro Client sent message %s\n", qubitro_payload);
+          if (writeLogToSerial)
+            USB_SERIAL.printf("Qubitro Client sent message %s\n", qubitro_payload);
         }
         else
         {
-          Serial.printf("Qubitro Client failed to send message, EndMessage error: %d\n", endMessageResult);
+          if (writeLogToSerial)
+            USB_SERIAL.printf("Qubitro Client failed to send message, EndMessage error: %d\n", endMessageResult);
         }
       }
       else
       {
-        Serial.printf("Qubitro Client error status %d\n", qubitro_mqttClient.connectError());
+        if (writeLogToSerial)
+          USB_SERIAL.printf("Qubitro Client error status %d\n", qubitro_mqttClient.connectError());
       }
     }
     else
     {
-      Serial.printf("Q No Wifi\n");
+      if (writeLogToSerial)
+       USB_SERIAL.printf("Q No Wifi\n");
     }
   }
   else
   {
-    Serial.printf("Q Not On\n");
+    if (writeLogToSerial)
+      USB_SERIAL.printf("Q Not On\n");
   }
 
   return success;
@@ -3768,7 +3788,7 @@ void sendTestByEmail()
 
   if (!smtp.connect(&session))
   {
-    Serial.println("Error connecting to SMTP, " + smtp.errorReason());
+    USB_SERIAL.println("Error connecting to SMTP, " + smtp.errorReason());
     return;
   }
 
@@ -3787,7 +3807,7 @@ void sendTestByEmail()
   emailMessage.html.transfer_encoding = Content_Transfer_Encoding::enc_7bit;
 
   if (!MailClient.sendMail(&smtp, &emailMessage))
-    Serial.println("Error sending Email, " + smtp.errorReason());
+    USB_SERIAL.println("Error sending Email, " + smtp.errorReason());
 }
 
 void sendLocationByEmail()
@@ -3802,12 +3822,12 @@ void sendLocationByEmail()
 
   if (!smtp.connect(&session))
   {
-    Serial.println("Error connecting to SMTP, " + smtp.errorReason());
+    USB_SERIAL.println("Error connecting to SMTP, " + smtp.errorReason());
     return;
   }
   else
   {
-    Serial.println("Connected to SMTP Ok");
+    USB_SERIAL.println("Connected to SMTP Ok");
   }
   SMTP_Message emailMessage;
 
@@ -3824,9 +3844,9 @@ void sendLocationByEmail()
   emailMessage.html.transfer_encoding = Content_Transfer_Encoding::enc_7bit;
 
   if (!MailClient.sendMail(&smtp, &emailMessage))
-    Serial.println("Error sending Email, " + smtp.errorReason());
+    USB_SERIAL.println("Error sending Email, " + smtp.errorReason());
   else
-    Serial.println("Error sending Email, " + smtp.errorReason());
+    USB_SERIAL.println("Error sending Email, " + smtp.errorReason());
 
 }
 #endif
@@ -3835,13 +3855,15 @@ void sendLocationByEmail()
 void InitESPNow() {
   WiFi.disconnect();
   if (esp_now_init() == ESP_OK) 
-  {
-    Serial.println("ESPNow Init Success");
+  { 
+    if (writeLogToSerial)
+      USB_SERIAL.println("ESPNow Init Success");
     ESPNowActive = true;
   }
   else 
   {
-    Serial.println("ESPNow Init Failed");
+    if (writeLogToSerial)
+      USB_SERIAL.println("ESPNow Init Failed");
     // do nothing
     ESPNowActive = false;
   }
@@ -3880,10 +3902,10 @@ void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  Serial.print("Last Packet Sent to: "); Serial.println(macStr);
-  Serial.print("Last Packet Send Status: ");
+  USB_SERIAL.print("Last Packet Sent to: "); USB_SERIAL.println(macStr);
+  USB_SERIAL.print("Last Packet Send Status: ");
 
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  USB_SERIAL.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 
   if (status == ESP_NOW_SEND_SUCCESS)
   {
@@ -3925,16 +3947,23 @@ void ESPNowScanForSlave()
   bool slaveFound = 0;
   memset(&ESPNow_slave, 0, sizeof(ESPNow_slave));
 
-  Serial.println("");
+  if (writeLogToSerial)
+    USB_SERIAL.println("");
+
   if (scanResults == 0) 
   {    
-    Serial.println("No WiFi devices in AP Mode found");
-    tb_display_print_String("No WiFi devices in AP Mode found\n");
+    if (writeLogToSerial)
+      USB_SERIAL.println("No WiFi devices in AP Mode found");
+
     ESPNow_slave.channel = ESPNOW_NO_SLAVE_CHANNEL_FLAG;
   } 
   else 
   {
-    Serial.print("Found "); Serial.print(scanResults); Serial.println(" devices ");
+    if (writeLogToSerial)
+    {
+      USB_SERIAL.print("Found "); USB_SERIAL.print(scanResults); USB_SERIAL.println(" devices ");
+    }
+    
     for (int i = 0; i < scanResults; ++i) 
     {
       // Print SSID and RSSI for each device found
@@ -3942,15 +3971,15 @@ void ESPNowScanForSlave()
       int32_t RSSI = WiFi.RSSI(i);
       String BSSIDstr = WiFi.BSSIDstr(i);
 
-      if (ESPNOW_PRINTSCANRESULTS) 
+      if (writeLogToSerial && ESPNOW_PRINTSCANRESULTS) 
       {
-        Serial.print(i + 1);
-        Serial.print(": ");
-        Serial.print(SSID);
-        Serial.print(" (");
-        Serial.print(RSSI);
-        Serial.print(")");
-        Serial.println("");
+        USB_SERIAL.print(i + 1);
+        USB_SERIAL.print(": ");
+        USB_SERIAL.print(SSID);
+        USB_SERIAL.print(" (");
+        USB_SERIAL.print(RSSI);
+        USB_SERIAL.print(")");
+        USB_SERIAL.println("");
       }
       
       delay(10);
@@ -3958,14 +3987,13 @@ void ESPNowScanForSlave()
       // Check if the current device starts with `Slave`
       if (SSID.indexOf("Slave") == 0) 
       {
-        // SSID of interest
-        Serial.println("Found a Slave.");
-        Serial.print(i + 1); Serial.print(": "); Serial.print(SSID); Serial.print(" ["); Serial.print(BSSIDstr); Serial.print("]"); Serial.print(" ("); Serial.print(RSSI); Serial.print(")"); Serial.println("");
-
-        M5.Lcd.println("Found a Slave.");
-        M5.Lcd.print(i + 1); M5.Lcd.print(": "); M5.Lcd.print(SSID); M5.Lcd.print(" ["); M5.Lcd.print(BSSIDstr); M5.Lcd.print("]"); M5.Lcd.print(" ("); M5.Lcd.print(RSSI); M5.Lcd.print(")"); M5.Lcd.println("");
-
-        
+        if (writeLogToSerial)
+        {
+          // SSID of interest
+          USB_SERIAL.println("Found a Slave.");
+          USB_SERIAL.print(i + 1); USB_SERIAL.print(": "); USB_SERIAL.print(SSID); USB_SERIAL.print(" ["); USB_SERIAL.print(BSSIDstr); USB_SERIAL.print("]"); USB_SERIAL.print(" ("); USB_SERIAL.print(RSSI); USB_SERIAL.print(")"); USB_SERIAL.println("");
+        }
+                
         // Get BSSID => Mac Address of the Slave
         int mac[6];
         if ( 6 == sscanf(BSSIDstr.c_str(), "%x:%x:%x:%x:%x:%x",  &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5] ) ) 
@@ -3987,17 +4015,18 @@ void ESPNowScanForSlave()
     }
   }
 
-  if (slaveFound) 
+  if (writeLogToSerial)
   {
-    Serial.println("Slave Found, processing..");
-    tb_display_print_String("Slave Found, processing...");
-  } 
-  else 
-  {
-    Serial.println("Slave Not Found, trying again.");
-    tb_display_print_String("No Slave, trying again.");
+    if (slaveFound) 
+    {
+      USB_SERIAL.println("Slave Found, processing..");
+    } 
+    else 
+    {
+      USB_SERIAL.println("Slave Not Found, trying again.");
+    }
   }
-
+  
   // clean up ram
   WiFi.scanDelete();
 }
@@ -4013,14 +4042,17 @@ bool ESPNowManageSlave()
       ESPNowDeletePeer();
     }
 
-    Serial.print("Slave Status: ");
+    if (writeLogToSerial)
+      USB_SERIAL.print("Slave Status: ");
+      
     // check if the peer exists
     bool exists = esp_now_is_peer_exist(ESPNow_slave.peer_addr);
     
     if ( exists) 
     {
       // Slave already paired.
-      Serial.println("Already Paired");
+      if (writeLogToSerial)
+        USB_SERIAL.println("Already Paired");
       return true;
     } 
     else 
@@ -4031,26 +4063,45 @@ bool ESPNowManageSlave()
       if (addStatus == ESP_OK) 
       {
         // Pair success
-        Serial.println("Pair success");
+        if (writeLogToSerial)
+          USB_SERIAL.println("Pair success");
         return true;
-      } else if (addStatus == ESP_ERR_ESPNOW_NOT_INIT) {
+      } 
+      else if (addStatus == ESP_ERR_ESPNOW_NOT_INIT) 
+      {
         // How did we get so far!!
-        Serial.println("ESPNOW Not Init");
+        if (writeLogToSerial)
+          USB_SERIAL.println("ESPNOW Not Init");
         return false;
-      } else if (addStatus == ESP_ERR_ESPNOW_ARG) {
-        Serial.println("Invalid Argument");
+      } 
+      else if (addStatus == ESP_ERR_ESPNOW_ARG) 
+      {
+        if (writeLogToSerial)
+            USB_SERIAL.println("Invalid Argument");
         return false;
-      } else if (addStatus == ESP_ERR_ESPNOW_FULL) {
-        Serial.println("Peer list full");
+      } 
+      else if (addStatus == ESP_ERR_ESPNOW_FULL) 
+      {
+        if (writeLogToSerial)
+            USB_SERIAL.println("Peer list full");
         return false;
-      } else if (addStatus == ESP_ERR_ESPNOW_NO_MEM) {
-        Serial.println("Out of memory");
+      } 
+      else if (addStatus == ESP_ERR_ESPNOW_NO_MEM) 
+      {
+        if (writeLogToSerial)
+          USB_SERIAL.println("Out of memory");
         return false;
-      } else if (addStatus == ESP_ERR_ESPNOW_EXIST) {
-        Serial.println("Peer Exists");
+      } 
+      else if (addStatus == ESP_ERR_ESPNOW_EXIST) 
+      {
+        if (writeLogToSerial)
+          USB_SERIAL.println("Peer Exists");
         return true;
-      } else {
-        Serial.println("Not sure what happened");
+      } 
+      else 
+      {
+        if (writeLogToSerial)
+          USB_SERIAL.println("Not sure what happened");
         return false;
       }
     }
@@ -4058,7 +4109,8 @@ bool ESPNowManageSlave()
   else 
   {
     // No slave found to process
-    Serial.println("No Slave found to process");
+    if (writeLogToSerial)
+      USB_SERIAL.println("No Slave found to process");
     return false;
   }
 }
@@ -4068,19 +4120,32 @@ void ESPNowDeletePeer()
   if (ESPNow_slave.channel != ESPNOW_NO_SLAVE_CHANNEL_FLAG)
   {
     esp_err_t delStatus = esp_now_del_peer(ESPNow_slave.peer_addr);
-    Serial.print("Slave Delete Status: ");
-    if (delStatus == ESP_OK) {
-      // Delete success
-      Serial.println("ESPNowDeletePeer::Success");
-    } else if (delStatus == ESP_ERR_ESPNOW_NOT_INIT) {
-      // How did we get so far!!
-      Serial.println("ESPNowDeletePeer::ESPNOW Not Init");
-    } else if (delStatus == ESP_ERR_ESPNOW_ARG) {
-      Serial.println("ESPNowDeletePeer::Invalid Argument");
-    } else if (delStatus == ESP_ERR_ESPNOW_NOT_FOUND) {
-      Serial.println("ESPNowDeletePeer::Peer not found.");
-    } else {
-      Serial.println("Not sure what happened");
+    
+    if (writeLogToSerial)
+    {
+      USB_SERIAL.print("Slave Delete Status: ");
+      if (delStatus == ESP_OK) 
+      {
+        // Delete success
+        USB_SERIAL.println("ESPNowDeletePeer::Success");
+      } 
+      else if (delStatus == ESP_ERR_ESPNOW_NOT_INIT) 
+      {
+        // How did we get so far!!
+        USB_SERIAL.println("ESPNowDeletePeer::ESPNOW Not Init");
+      } 
+      else if (delStatus == ESP_ERR_ESPNOW_ARG) 
+      {
+        USB_SERIAL.println("ESPNowDeletePeer::Invalid Argument");
+      } 
+      else if (delStatus == ESP_ERR_ESPNOW_NOT_FOUND) 
+      {
+        USB_SERIAL.println("ESPNowDeletePeer::Peer not found.");
+      } 
+      else 
+      {
+        USB_SERIAL.println("Not sure what happened");
+      }
     }
   }
 }
