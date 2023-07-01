@@ -26,6 +26,14 @@ const uint8_t defaultSilkyVolume = 6;
 uint8_t silkyVolume = defaultSilkyVolume;
 
 esp_now_peer_info_t ESPNow_slave;
+
+const int RESET_ESPNOW_SEND_RESULT = 0xFF;
+esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
+
+
+enum e_audio_action {AUDIO_ACTION_NONE, AUDIO_ACTION_NEXT_SOUND, AUDIO_ACTION_CYCLE_VOLUME, AUDIO_ACTION_SOUNDS_TOGGLE, AUDIO_ACTION_PLAYBACK_TOGGLE, AUDIO_ACTION_STOP_PLAYBACK};
+e_audio_action audioAction = AUDIO_ACTION_NONE;
+
 const uint8_t ESPNOW_CHANNEL = 1;
 const uint8_t ESPNOW_NO_SLAVE_CHANNEL_FLAG = 0xFF;
 const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
@@ -171,8 +179,10 @@ const bool enableOTAServer = true; // OTA updates
 AsyncWebServer asyncWebServer(80);
 // OTA updates end
 
-uint32_t showTempDisplayEndTime = 0xFFFFFFFF;
+const uint32_t disabledTempDisplayEndTime = 0xFFFFFFFF;
+uint32_t showTempDisplayEndTime = disabledTempDisplayEndTime;
 const uint32_t showTempDisplayHoldDuration = 5000;
+const uint32_t showTempAudioTestDisplayHoldDuration = 500;
 
 char uplink_preamble_pattern[] = "MBJAEJ";
 char uplinkTestMessages[][6] = {"MSG0 ", "MSG1 ", "MSG2 ", "MSG3 "};
@@ -227,6 +237,7 @@ char audioTestDisplayLabel[] = "AT";
 char surveyDisplayLabel[] = "SV";
 char thisTargetDisplayLabel[] = "TT";
 char nextWaypointDisplayLabel[] = "NT";
+char audioActionDisplayLabel[] = "AA";
 char undefinedDisplayLabel[] = "??";
 
 uint32_t recordHighlightExpireTime = 0;
@@ -351,27 +362,37 @@ uint16_t       whenToStopTimerDueToLackOfDepth = 0;
 uint16_t       minsToTriggerStopDiveTimer = 10;
 
 
-enum  e_mako_displays {SURVEY_DISPLAY, NAV_COMPASS_DISPLAY, NAV_COURSE_DISPLAY, LOCATION_DISPLAY, JOURNEY_DISPLAY, AUDIO_TEST_DISPLAY, SHOW_LAT_LONG_DISPLAY, NEXT_TARGET_DISPLAY, THIS_TARGET_DISPLAY};
+enum  e_mako_displays 
+  {SURVEY_DISPLAY, 
+  NAV_COMPASS_DISPLAY, 
+  NAV_COURSE_DISPLAY, 
+  LOCATION_DISPLAY, 
+  JOURNEY_DISPLAY, 
+  AUDIO_TEST_DISPLAY, 
+  SHOW_LAT_LONG_DISPLAY_TEMP, 
+  NEXT_TARGET_DISPLAY_TEMP, 
+  THIS_TARGET_DISPLAY_TEMP,
+  AUDIO_ACTION_DISPLAY_TEMP};
+  
 const e_mako_displays first_display_rotation = SURVEY_DISPLAY;
 const e_mako_displays last_display_rotation = AUDIO_TEST_DISPLAY;
 
 e_mako_displays display_to_show = first_display_rotation;
 e_mako_displays display_to_revert_to = first_display_rotation;
-e_mako_displays previous_display_shown = first_display_rotation;
 
 void switchToNextDisplayToShow()
 {
-  if ((int)display_to_show > (int)last_display_rotation)
-  {
-    display_to_show = previous_display_shown;
-  }
-  else
-  {
+ // if ((int)display_to_show > (int)last_display_rotation)
+ // {
+ //   display_to_show = previous_display_shown;
+ // }
+ // else
+ // {
     display_to_show = (e_mako_displays)((int)display_to_show + 1);
 
     if (display_to_show > last_display_rotation)
       display_to_show = first_display_rotation;
-  }
+//  }
 
   M5.Lcd.fillScreen(TFT_BLACK);
   requestConsoleScreenRefresh=true;
@@ -1172,6 +1193,10 @@ const uint32_t buttonPressDurationToChangeScreen = 50;
 
 void checkForButtonPresses()
 {
+  // ignore button presses whilst a temporary display is shown
+  if (showTempDisplayEndTime != disabledTempDisplayEndTime)
+    return;
+    
   updateButtonsAndBuzzer();
 
   switch (display_to_show)
@@ -1247,20 +1272,36 @@ void checkForButtonPresses()
 
       if (p_secondButton->wasReleasefor(10000)) // toggle sounds on and off
       {
+        showTempDisplayEndTime = millis() + showTempAudioTestDisplayHoldDuration;
+        display_to_revert_to = display_to_show;
+        display_to_show = AUDIO_ACTION_DISPLAY_TEMP;
+
         toggleSound();
         publishToSilkyStopPlayback();
         notifySoundsOnOffChanged();
       }
       else if (p_secondButton->wasReleasefor(5000)) // Skip to next track
       {
+        showTempDisplayEndTime = millis() + showTempAudioTestDisplayHoldDuration;
+        display_to_revert_to = display_to_show;
+        display_to_show = AUDIO_ACTION_DISPLAY_TEMP;
+
         publishToSilkyTogglePlayback();
       }
       else if (p_secondButton->wasReleasefor(500)) // cycle volume up and then low at max
       {
+        showTempDisplayEndTime = millis() + showTempAudioTestDisplayHoldDuration;
+        display_to_revert_to = display_to_show;
+        display_to_show = AUDIO_ACTION_DISPLAY_TEMP;
+
         publishToSilkyCycleVolumeUp();
       }
       else if (p_secondButton->wasReleasefor(50)) // start/stop play
       {
+        showTempDisplayEndTime = millis() + showTempAudioTestDisplayHoldDuration;
+        display_to_revert_to = display_to_show;
+        display_to_show = AUDIO_ACTION_DISPLAY_TEMP;
+
         publishToSilkySkipToNextTrack();
       }
       break;    
@@ -1271,7 +1312,7 @@ void checkForButtonPresses()
       {
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration;
         display_to_revert_to = display_to_show;
-        display_to_show = SHOW_LAT_LONG_DISPLAY;
+        display_to_show = SHOW_LAT_LONG_DISPLAY_TEMP;
         M5.Lcd.fillScreen(TFT_BLACK);
       }
       else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
@@ -1292,7 +1333,7 @@ void checkForButtonPresses()
         nextWaypoint = diveOneWaypoints + waypointExit;
 
         display_to_revert_to = display_to_show;
-        display_to_show = NEXT_TARGET_DISPLAY;
+        display_to_show = NEXT_TARGET_DISPLAY_TEMP;
         M5.Lcd.fillScreen(TFT_BLACK);
       }
       else if (p_secondButton->wasReleasefor(1000))     // Nav Screens: switch to next target
@@ -1304,7 +1345,7 @@ void checkForButtonPresses()
           nextWaypoint = diveOneWaypoints;
           
         display_to_revert_to = display_to_show;
-        display_to_show = NEXT_TARGET_DISPLAY;
+        display_to_show = NEXT_TARGET_DISPLAY_TEMP;
         M5.Lcd.fillScreen(TFT_BLACK);
       }
       else if (p_secondButton->wasReleasefor(50))      // Nav Screens: remind diver of current target
@@ -1313,7 +1354,7 @@ void checkForButtonPresses()
 
         // don't change target - remind diver of current target
         display_to_revert_to = display_to_show;
-        display_to_show = THIS_TARGET_DISPLAY;
+        display_to_show = THIS_TARGET_DISPLAY_TEMP;
         M5.Lcd.fillScreen(TFT_BLACK);
       }
         
@@ -1343,26 +1384,6 @@ void refreshConsoleScreen()
       drawCourseSection();
       break;
     }
-    case AUDIO_TEST_DISPLAY:
-    {
-      drawAudioTest();
-      break;
-    }
-    case SHOW_LAT_LONG_DISPLAY:
-    {
-      drawLatLong();
-      break;
-    }
-    case NEXT_TARGET_DISPLAY:
-    {
-      drawNextTarget();
-      break;
-    }
-    case THIS_TARGET_DISPLAY:
-    {
-      drawThisTarget();
-      break;
-    }
     case LOCATION_DISPLAY:
     {
       drawLocationStats();
@@ -1371,6 +1392,31 @@ void refreshConsoleScreen()
     case JOURNEY_DISPLAY:
     {
       drawJourneyStats();
+      break;
+    }
+    case AUDIO_TEST_DISPLAY:
+    {
+      drawAudioTest();
+      break;
+    }
+    case SHOW_LAT_LONG_DISPLAY_TEMP:
+    {
+      drawLatLong();
+      break;
+    }
+    case NEXT_TARGET_DISPLAY_TEMP:
+    {
+      drawNextTarget();
+      break;
+    }
+    case THIS_TARGET_DISPLAY_TEMP:
+    {
+      drawThisTarget();
+      break;
+    }
+    case AUDIO_ACTION_DISPLAY_TEMP:
+    {
+      drawAudioActionDisplay();
       break;
     }
     default:
@@ -1696,7 +1742,7 @@ void drawNextTarget()
 
   if (millis() > showTempDisplayEndTime)
   {
-    showTempDisplayEndTime = 0xFFFFFFFF;
+    showTempDisplayEndTime = disabledTempDisplayEndTime;
     display_to_show = display_to_revert_to;
     M5.Lcd.fillScreen(TFT_BLACK);
   }
@@ -1713,7 +1759,66 @@ void drawThisTarget()
 
   if (millis() > showTempDisplayEndTime)
   {
-    showTempDisplayEndTime = 0xFFFFFFFF;
+    showTempDisplayEndTime = disabledTempDisplayEndTime;
+    display_to_show = display_to_revert_to;
+    M5.Lcd.fillScreen(TFT_BLACK);
+  }
+}
+
+void drawAudioActionDisplay()
+{
+  M5.Lcd.fillScreen(TFT_GREEN);
+  M5.Lcd.setCursor(0, 0);
+
+  switch (audioAction)
+  {
+    case AUDIO_ACTION_NEXT_SOUND:
+      M5.Lcd.println("Silky:\nSkip to Next Sound");
+      displayESPNowSendDataResult(ESPNowSendResult);
+      break;
+
+    case AUDIO_ACTION_CYCLE_VOLUME:
+      M5.Lcd.printf("Silky:\nCycle volume up %u",silkyVolume);
+      displayESPNowSendDataResult(ESPNowSendResult);
+      break;
+
+    case AUDIO_ACTION_SOUNDS_TOGGLE:
+      M5.Lcd.println(soundsOn ? "Silky:\nSounds On" : "Silky:\nSounds Off"); 
+      displayESPNowSendDataResult(ESPNowSendResult);
+      break;
+
+    case AUDIO_ACTION_PLAYBACK_TOGGLE:
+      M5.Lcd.println("Silky:\nToggle Playback");
+      displayESPNowSendDataResult(ESPNowSendResult);
+      break;
+
+    case AUDIO_ACTION_STOP_PLAYBACK:
+      M5.Lcd.println("Silky:\nStop Playback");
+      displayESPNowSendDataResult(ESPNowSendResult);
+      break;
+
+    case AUDIO_ACTION_NONE:
+      // shouldn't get here
+      M5.Lcd.println("Silky:\nAudio Action None");
+      displayESPNowSendDataResult(ESPNowSendResult);
+      break;
+
+    case RESET_ESPNOW_SEND_RESULT:
+      // shouldn't get here
+      M5.Lcd.println("Silky:\nAudio Action Reset");
+      break;
+
+    default:
+      // shouldn't get here
+      M5.Lcd.println("Silky:\nUndefined Audio Action");
+      break;      
+  }
+
+  if (millis() > showTempDisplayEndTime)
+  {
+    ESPNowSendResult = RESET_ESPNOW_SEND_RESULT;
+    
+    showTempDisplayEndTime = disabledTempDisplayEndTime;
     display_to_show = display_to_revert_to;
     M5.Lcd.fillScreen(TFT_BLACK);
   }
@@ -1748,7 +1853,7 @@ void drawLatLong()
 
   if (millis() > showTempDisplayEndTime)
   {
-    showTempDisplayEndTime = 0xFFFFFFFF;
+    showTempDisplayEndTime = disabledTempDisplayEndTime;
     display_to_show = display_to_revert_to;
     M5.Lcd.fillScreen(TFT_BLACK);
   }
@@ -2163,12 +2268,13 @@ void sendUplinkTelemetryMessageV5()
       case NAV_COURSE_DISPLAY:  displayLabel[0] = navCourseDisplayLabel[0]; displayLabel[1] = navCourseDisplayLabel[1]; break;
       case LOCATION_DISPLAY:    displayLabel[0] = locationDisplayLabel[0]; displayLabel[1] = locationDisplayLabel[1]; break;
       case JOURNEY_DISPLAY:     displayLabel[0] = journeyDisplayLabel[0]; displayLabel[1] = journeyDisplayLabel[1]; break;
-      case SHOW_LAT_LONG_DISPLAY: displayLabel[0] = showLatLongDisplayLabel[0]; displayLabel[1] = showLatLongDisplayLabel[1]; break;
+      case SHOW_LAT_LONG_DISPLAY_TEMP: displayLabel[0] = showLatLongDisplayLabel[0]; displayLabel[1] = showLatLongDisplayLabel[1]; break;
       case AUDIO_TEST_DISPLAY:  displayLabel[0] = audioTestDisplayLabel[0]; displayLabel[1] = audioTestDisplayLabel[1]; break;
       case SURVEY_DISPLAY:      displayLabel[0] = surveyDisplayLabel[0]; displayLabel[1] = surveyDisplayLabel[1]; break;
-      case NEXT_TARGET_DISPLAY: displayLabel[0] = nextWaypointDisplayLabel[0]; displayLabel[1] = nextWaypointDisplayLabel[1]; break;
-      case THIS_TARGET_DISPLAY: displayLabel[0] = thisTargetDisplayLabel[0]; displayLabel[1] = thisTargetDisplayLabel[1]; break;      
-      default:                  displayLabel[0] = undefinedDisplayLabel[0]; displayLabel[1] = undefinedDisplayLabel[1]; break;
+      case NEXT_TARGET_DISPLAY_TEMP: displayLabel[0] = nextWaypointDisplayLabel[0]; displayLabel[1] = nextWaypointDisplayLabel[1]; break;
+      case THIS_TARGET_DISPLAY_TEMP: displayLabel[0] = thisTargetDisplayLabel[0]; displayLabel[1] = thisTargetDisplayLabel[1]; break;      
+      case AUDIO_ACTION_DISPLAY_TEMP: displayLabel[0] = thisTargetDisplayLabel[0]; displayLabel[1] = thisTargetDisplayLabel[1]; break;      
+      default:                  displayLabel[0] = audioActionDisplayLabel[0]; displayLabel[1] = audioActionDisplayLabel[1]; break;
     }
 
     *(nextMetric++) = (uint16_t)(displayLabel[0]) + (((uint16_t)(displayLabel[1])) << 8); // which display is shown on the console
@@ -3154,7 +3260,9 @@ void publishToSilkyPlayAudioGuidance(enum e_soundFX sound)
   {
     ESPNow_data_to_send = (uint8_t)sound;
     const uint8_t *peer_addr = ESPNow_slave.peer_addr;
-    esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+
+    audioAction = AUDIO_ACTION_NONE;
   }
 }
 
@@ -3162,17 +3270,12 @@ void publishToSilkySkipToNextTrack()
 {
   if (ESPNowActive && soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
   {
-    M5.Lcd.fillScreen(TFT_GREEN);
-    M5.Lcd.setCursor(0, 0);
-    M5.Lcd.println("Silky:\nSkip to Next Track");
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_NEXT_TRACK;
     const uint8_t *peer_addr = ESPNow_slave.peer_addr;
-    esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
-    delay(250);
-    M5.Lcd.fillScreen(TFT_BLACK);
-    displayESPNowSendDataResult(result);
+    audioAction = AUDIO_ACTION_NEXT_SOUND;
   }
 }
 
@@ -3180,23 +3283,16 @@ void publishToSilkyCycleVolumeUp()
 {
   if (ESPNowActive && soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
   {
-    M5.Lcd.fillScreen(TFT_GREEN);
-    M5.Lcd.setCursor(0, 0);
     if (silkyVolume == 9)
       silkyVolume = 1;
     else
       silkyVolume++;
       
-    M5.Lcd.printf("Silky:\nCycle volume up %u",silkyVolume);
-    
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP;
     const uint8_t *peer_addr = ESPNow_slave.peer_addr;
-    esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
-
-    delay(250);
-    M5.Lcd.fillScreen(TFT_BLACK);
-    displayESPNowSendDataResult(result);
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+    audioAction = AUDIO_ACTION_CYCLE_VOLUME;
   }
 }
 
@@ -3204,17 +3300,11 @@ void publishToSilkyTogglePlayback()
 {
   if (ESPNowActive && soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
   {
-    M5.Lcd.fillScreen(TFT_GREEN);
-    M5.Lcd.setCursor(0, 0);
-    M5.Lcd.println("Silky:\nToggle Playback");
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK;
     const uint8_t *peer_addr = ESPNow_slave.peer_addr;
-    esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
-
-    delay(250);
-    M5.Lcd.fillScreen(TFT_BLACK);
-    displayESPNowSendDataResult(result);
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+    audioAction = AUDIO_ACTION_PLAYBACK_TOGGLE;
   }
 }
 
@@ -3222,17 +3312,11 @@ void publishToSilkyStopPlayback()
 {
   if (ESPNowActive && !soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
   {
-    M5.Lcd.fillScreen(TFT_GREEN);
-    M5.Lcd.setCursor(0, 0);
-    M5.Lcd.println("Silky:\Stop Playback");
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_STOP_PLAYBACK;
     const uint8_t *peer_addr = ESPNow_slave.peer_addr;
-    esp_err_t result = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
-
-    delay(250);
-    M5.Lcd.fillScreen(TFT_BLACK);
-    displayESPNowSendDataResult(result);
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
+    audioAction = AUDIO_ACTION_STOP_PLAYBACK;
   }
 }
 
@@ -3240,11 +3324,8 @@ void notifySoundsOnOffChanged()
 {
   if (ESPNowActive && ESPNow_slave.channel == ESPNOW_CHANNEL)
   {
-    M5.Lcd.fillScreen(TFT_GREEN);
-    M5.Lcd.setCursor(0, 0);
-    M5.Lcd.println(soundsOn ? "Silky:\nSounds On" : "Silky:\nSounds Off");  
-    delay(500);
-    M5.Lcd.fillScreen(TFT_BLACK);
+    ESPNowSendResult = ESP_OK;
+    audioAction = AUDIO_ACTION_SOUNDS_TOGGLE;
   }
 }
 
