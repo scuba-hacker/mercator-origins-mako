@@ -31,7 +31,7 @@ const int RESET_ESPNOW_SEND_RESULT = 0xFF;
 esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
 
 
-enum e_audio_action {AUDIO_ACTION_NONE, AUDIO_ACTION_NEXT_SOUND, AUDIO_ACTION_CYCLE_VOLUME, AUDIO_ACTION_SOUNDS_TOGGLE, AUDIO_ACTION_PLAYBACK_TOGGLE, AUDIO_ACTION_STOP_PLAYBACK};
+enum e_audio_action {AUDIO_ACTION_NONE, AUDIO_ACTION_NEXT_SOUND, AUDIO_ACTION_CYCLE_VOLUME, AUDIO_ACTION_SOUNDS_TOGGLE, AUDIO_ACTION_PLAYBACK_TOGGLE, AUDIO_ACTION_STOP_PLAYBACK, AUDIO_ACTION_SET_VOLUME};
 e_audio_action audioAction = AUDIO_ACTION_NONE;
 
 const uint8_t ESPNOW_CHANNEL = 1;
@@ -43,6 +43,7 @@ const uint8_t SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK = (uint8_t)'A'; // 500 ms
 const uint8_t SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP = (uint8_t)'B'; // 2000 ms
 const uint8_t SILKY_ESPNOW_COMMAND_NEXT_TRACK = (uint8_t)'C';   // 5000 ms
 const uint8_t SILKY_ESPNOW_COMMAND_STOP_PLAYBACK = (uint8_t)'D';   // 10000 ms
+const uint8_t SILKY_ESPNOW_COMMAND_SET_VOLUME = (uint8_t)'E';
 
 enum e_soundFX {SFX_BASS='0', SFX_HARPLOW='1',SFX_HARPRASP='2',SFX_HIPITCH='3',SFX_KEYCLICK='4',SFX_MEDBUZZ='5',SFX_POP='6'};
 
@@ -1783,6 +1784,11 @@ void drawAudioActionDisplay()
       displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
+    case AUDIO_ACTION_SET_VOLUME:
+      M5.Lcd.println("Silky:\nSet Volume\n");
+      displayESPNowSendDataResult(ESPNowSendResult);
+      break;
+    
     case AUDIO_ACTION_NONE:
       // shouldn't get here
       M5.Lcd.println("Silky:\nAudio Action None\n");
@@ -3189,6 +3195,20 @@ void publishToSilkyCycleVolumeUp()
   }
 }
 
+void publishToSilkySetVolume(const uint8_t newVolume)
+{
+  if (ESPNowActive && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  {
+    silkyVolume = newVolume;
+      
+    // Send byte command to Silky to say skip to next track
+    uint16_t ESPNow_word_to_send = ((uint16_t)silkyVolume << 8) | (uint16_t)SILKY_ESPNOW_COMMAND_SET_VOLUME;
+    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+    ESPNowSendResult = esp_now_send(peer_addr, (uint8_t*)&ESPNow_word_to_send, sizeof(ESPNow_word_to_send));
+    audioAction = AUDIO_ACTION_NONE;
+  }
+}
+
 void publishToSilkyTogglePlayback()
 {
   if (ESPNowActive && soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
@@ -3291,6 +3311,8 @@ void toggleESPNowActive()
         if (isPairedWithAudioPod)
         {
           slaveFound = true;
+          // set Silky volume to default.
+          publishToSilkySetVolume(defaultSilkyVolume);
         }
         else
         {
@@ -3299,7 +3321,7 @@ void toggleESPNowActive()
     
           M5.Lcd.println("ESPNow Disabled");
           if (writeLogToSerial)
-            USB_SERIAL.println("ESPNow Disabled");            
+            USB_SERIAL.println("ESPNow Disabled");
         }
       }
       else
