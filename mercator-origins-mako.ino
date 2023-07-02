@@ -284,7 +284,7 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
   [9] = { ._label = "Mark's\nGaff", ._lat = 51.391231, ._long = -0.287616}
 };
 */
-
+/*
 const uint8_t waypointCount = 20;
 const uint8_t waypointExit = 19;
 
@@ -310,6 +310,33 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
   [17] = { ._label = "Pine-Pine 2", ._lat = 51.3922843, ._long = -0.2854915},
   [18] = { ._label = "Pine-Manor 2", ._lat = 51.3913202, ._long = -0.2869346},
   [19] = { ._label = "End", ._lat = 51.3915538, ._long = -0.2873525}
+};
+
+*/
+
+// Actual recorded waypoints around the neighbourhood, not from google maps
+
+const uint8_t waypointCount = 16;
+const uint8_t waypointExit = 15;
+
+navigationWaypoint diveOneWaypoints[waypointCount] =
+{
+  [0] = { ._label = "Post at\nPine/Chiltern", ._lat = 51.3920722, ._long = -0.2845362},
+  [1] = { ._label = "Tree\ngreen\nhouse", ._lat = 51.3919567, ._long = -0.2840520},
+  [2] = { ._label = "Tree with poster", ._lat = 51.3918198, ._long = -0.2827345},
+  [3] = { ._label = "Bin Stirling", ._lat = 51.3917177, ._long = -0.2818822},
+  [4] = { ._label = "Post Hogsmill", ._lat = 51.3916780, ._long = -0.2801638},
+  [5] = { ._label = "Blue board Hogsmill", ._lat = 51.3923120, ._long = -0.2796272},
+  [6] = { ._label = "Insect Hotel", ._lat = 51.3924743, ._long = -0.2795370},
+  [7] = { ._label = "Triangle Grass", ._lat = 51.3925900, ._long = -0.2792620},
+  [8] = { ._label = "Post Brick Elec", ._lat = 51.3919805, ._long = -0.2789820},
+  [9] = { ._label = "New tree field", ._lat = 51.3916553, ._long = -0.2793057},
+  [10] = { ._label = "Bench", ._lat = 51.3915620, ._long = -0.2795162},
+  [11] = { ._label = "Allot Gate", ._lat = 51.3917410, ._long = -0.2803340},
+  [12] = { ._label = "Pointy House", ._lat = 51.3917762, ._long = -0.2824163},
+  [13] = { ._label = "Mushroom", ._lat = 51.3911513, ._long = -0.2872495},
+  [14] = { ._label = "Silver Birch", ._lat = 51.3910167, ._long = -0.2874398},
+  [15] = { ._label = "Lamp post", ._lat = 51.3907690, ._long = -0.2878912}
 };
 
 navigationWaypoint* nextWaypoint = diveOneWaypoints;
@@ -357,7 +384,7 @@ uint8_t graphicsCount = 0;
 char activity_indicator[] = "\\|/-";
 
 bool           diveTimerRunning = false;
-const float    minimumDivingDepthToRunTimer = 0.5;  // in metres
+const float    minimumDivingDepthToRunTimer = 1.0;  // in metres
 uint16_t       minutesDurationDiving = 0;
 uint16_t       whenToStopTimerDueToLackOfDepth = 0;
 uint16_t       minsToTriggerStopDiveTimer = 10;
