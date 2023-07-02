@@ -22,7 +22,7 @@ uint16_t ESPNowMessagesFailedToDeliver = 0;
 uint8_t ESPNow_data_to_send = 0;
 
 bool soundsOn = true;
-const uint8_t defaultSilkyVolume = 6;
+const uint8_t defaultSilkyVolume = 9;
 uint8_t silkyVolume = defaultSilkyVolume;
 
 esp_now_peer_info_t ESPNow_slave;
@@ -318,7 +318,7 @@ enum e_direction_metric {JOURNEY_COURSE, COMPASS_HEADING};
 
 double heading_to_target = 0, distance_to_target = 0;
 double journey_lat = 0, journey_lng = 0, journey_course = 0, journey_distance = 0;
-float magnetic_heading = 0;
+double magnetic_heading = 0;
 float mag_accel_x = 0, mag_accel_y = 0, mag_accel_z = 0;
 float mag_tesla_x = 0, mag_tesla_y = 0, mag_tesla_z = 0;
 float humidity = 0, temperature = 0, air_pressure = 0, pressure_altitude = 0, depth = 0, water_temperature = 0, water_pressure = 0, depth_altitude = 0;
@@ -382,20 +382,15 @@ e_mako_displays display_to_revert_to = first_display_rotation;
 
 void switchToNextDisplayToShow()
 {
- // if ((int)display_to_show > (int)last_display_rotation)
- // {
- //   display_to_show = previous_display_shown;
- // }
- // else
- // {
-    display_to_show = (e_mako_displays)((int)display_to_show + 1);
+  display_to_show = (e_mako_displays)((int)display_to_show + 1);
 
-    if (display_to_show > last_display_rotation)
-      display_to_show = first_display_rotation;
-//  }
+  if (display_to_show > last_display_rotation)
+    display_to_show = first_display_rotation;
 
   M5.Lcd.fillScreen(TFT_BLACK);
   requestConsoleScreenRefresh=true;
+  lastWayMarker = BLACKOUT_MARKER;
+  lastWayMarkerChangeTimestamp = 0;
 }
 
 const uint8_t RED_LED_GPIO = 10;
@@ -445,9 +440,9 @@ template <typename T> struct vector
 };
 
 // Stores min and max magnetometer values from calibration
-vector<float> magnetometer_max;
-vector<float> magnetometer_min;
-vector<float> magnetometer_vector, accelerometer_vector;
+vector<double> magnetometer_max;
+vector<double> magnetometer_min;
+vector<double> magnetometer_vector, accelerometer_vector;
 vector<float> imu_gyro_vector, imu_lin_acc_vector, imu_rot_acc_vector;
 float imu_temperature = 0.0;
 
@@ -479,7 +474,7 @@ bool imuAvailable = true;
 
 // Magnetic Compass averaging and refresh rate control
 const uint8_t s_smoothCompassBufferSize = 20;
-float s_smoothedCompassHeading[s_smoothCompassBufferSize];
+double s_smoothedCompassHeading[s_smoothCompassBufferSize];
 uint8_t s_nextCompassSampleIndex = 0;
 bool s_compassBufferInitialised = false;
 const uint16_t s_compassSampleDelay = 50;
@@ -500,7 +495,6 @@ const uint8_t GROVE_GPS_TX_PIN = 32;
 const uint8_t HAT_GPS_RX_PIN = 26;
 const uint8_t IR_LED_GPS_TX_PIN = 9;
 
-
 Button BtnGoProTop = Button(BUTTON_GOPRO_TOP_PIN, true, MERCATOR_DEBOUNCE_MS);    // from utility/Button.h for M5 Stick C Plus
 Button BtnGoProSide = Button(BUTTON_GOPRO_SIDE_PIN, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 uint16_t sideCount = 0, topCount = 0;
@@ -514,13 +508,13 @@ uint32_t latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
 uint32_t latestFixTimeStampStreamOk = 0;
 
 // Magnetic heading calculation functions
-template <typename T> float magHeading(vector<T> from);
+template <typename T> double magHeading(vector<T> from);
 template <typename Ta, typename Tb, typename To> void vector_cross(const vector<Ta> *a, const vector<Tb> *b, vector<To> *out);
 template <typename Ta, typename Tb> float vector_dot(const vector<Ta> *a, const vector<Tb> *b);
-void vector_normalize(vector<float> *a);
-bool getMagHeadingTiltCompensated(float& tiltCompensatedHeading);
-bool getMagHeadingNotTiltCompensated(float& heading);
-bool getSmoothedMagHeading(float& b);
+void vector_normalize(vector<double> *a);
+bool getMagHeadingTiltCompensated(double& tiltCompensatedHeading);
+bool getMagHeadingNotTiltCompensated(double& heading);
+bool getSmoothedMagHeading(double& b);
 std::string getCardinal(float b);
 //void getTempAndHumidityAHT20(float& h, float& t);
 
@@ -631,10 +625,10 @@ void setup()
   //  uart_set_mode(uart_number, UART_MODE_RS485_HALF_DUPLEX);
 
   // settings from M5 with no magnets - X arrow on magnetometer pointing in direction of heading.
-  magnetometer_min = (vector<float>) {
+  magnetometer_min = (vector<double>) {
     -51.15, -60.45, 0.00
   };
-  magnetometer_max = (vector<float>) {
+  magnetometer_max = (vector<double>) {
     53.10, 37.05, 110.25
   };
 
@@ -1777,7 +1771,6 @@ void drawAudioActionDisplay()
 
     case AUDIO_ACTION_SOUNDS_TOGGLE:
       M5.Lcd.println(soundsOn ? "Silky:\nSounds On\n" : "Silky:\nSounds Off\n"); 
-      displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
     case AUDIO_ACTION_PLAYBACK_TOGGLE:
@@ -1793,7 +1786,6 @@ void drawAudioActionDisplay()
     case AUDIO_ACTION_NONE:
       // shouldn't get here
       M5.Lcd.println("Silky:\nAudio Action None\n");
-      displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
     case RESET_ESPNOW_SEND_RESULT:
@@ -1841,10 +1833,12 @@ void drawLatLong()
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
   M5.Lcd.printf("N:%.7f\n", Lat);
   M5.Lcd.printf("E:%.7f\n", Lng);
-  M5.Lcd.printf("Depth: %.3fm\n", depth);
-  M5.Lcd.printf("Dive: %hu mins",minutesDurationDiving);
+  M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+  M5.Lcd.printf("%.1fm %hu mins\n", depth, minutesDurationDiving);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
   M5.Lcd.printf("%02d:%02d:%02d %02d%02d", gps.time.hour(), gps.time.minute(), gps.time.second(), gps.date.day(), gps.date.month());
 
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
   if (millis() > showTempDisplayEndTime)
   {
     showTempDisplayEndTime = disabledTempDisplayEndTime;
@@ -1903,8 +1897,8 @@ void drawJourneyStats()
 
   M5.Lcd.printf("OTA:%hu Uplink:%hu", otaActiveListening,  enableUplinkComms);
 
-  M5.Lcd.setCursor(5, 34);
-  M5.Lcd.printf("Wifi:%hu %s", WiFi.status() == WL_CONNECTED, ssid_connected);
+  M5.Lcd.setCursor(5, 34);  
+  M5.Lcd.printf("Wifi:%hu %s", WiFi.status() == WL_CONNECTED, (ESPNowActive ? "ESPNow On" : ssid_connected));
   M5.Lcd.setCursor(5, 51);
   M5.Lcd.printf("Fix:%lu Up:%lu", fixCount, uplinkMessageCount);
   M5.Lcd.setCursor(5, 68);
@@ -2575,117 +2569,6 @@ void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
   }
 }
 
-
-
-void refreshDirectionGraphicOld( float directionOfTravel,  float headingToTarget)
-{
-  if (!enableNavigationGraphics)
-    return;
-
-  // Calculate whether the traveller needs to continue straight ahead,
-  // rotate clockwise or rotate anticlockwise and update graphic.
-  // Blacks out if no journey recorded.
-  uint16_t edgeBound = 15;    // If journey course within +- 15 degrees of target heading then go ahead
-  uint16_t edgeRight = (uint16_t)(headingToTarget + edgeBound) % 360;
-  uint16_t edgeLeft = (uint16_t)(headingToTarget - edgeBound) % 360;
-
-  uint16_t edgeOpposingTarget = (uint16_t)(headingToTarget + 180) % 360;
-
-  if (blackout_journey_no_movement)
-  {
-    goBlackout();
-    lastWayMarker = BLACKOUT_MARKER;
-  }
-  else
-  {
-    if (millis() - lastWayMarkerChangeTimestamp > 1000)
-    {
-      lastWayMarkerChangeTimestamp = millis();
-
-      uint16_t shift = 0;
-
-      if (edgeLeft > edgeOpposingTarget && edgeRight < edgeOpposingTarget)
-        // one edge either side of the 0 discontinuity, add 180 to all headings
-        shift = 180;
-      else
-        shift = 0;
-
-      edgeLeft = (edgeLeft + shift) % 360;
-      edgeRight = (edgeRight + shift) % 360;
-      directionOfTravel = (uint16_t)(directionOfTravel + shift) % 360;
-      edgeOpposingTarget = (edgeOpposingTarget + shift) % 360;
-      headingToTarget = (uint16_t)(headingToTarget + shift) % 360;
-
-      // Check for straight ahead.
-      if (directionOfTravel >= edgeLeft && directionOfTravel <= edgeRight)
-      {
-        newWayMarker = GO_AHEAD_MARKER;
-
-        if (lastWayMarker != newWayMarker)
-        {
-          goAhead();
-          lastWayMarker = newWayMarker;
-        }
-      }
-      else
-      {
-        if (directionOfTravel > edgeRight && directionOfTravel < edgeOpposingTarget)
-        {
-          newWayMarker = GO_ANTICLOCKWISE_MARKER;
-          if (lastWayMarker != newWayMarker)
-          {
-            goAntiClockwise();
-            lastWayMarker = newWayMarker;
-          }
-          return;
-        }
-
-        if (directionOfTravel > edgeRight && directionOfTravel >= edgeOpposingTarget)
-        {
-          newWayMarker = GO_CLOCKWISE_MARKER;
-          if (lastWayMarker != newWayMarker)
-          {
-            goClockwise();
-            lastWayMarker = newWayMarker;
-          }
-          return;
-        }
-
-        if (directionOfTravel < edgeLeft && directionOfTravel >= edgeOpposingTarget)
-        {
-          newWayMarker = GO_CLOCKWISE_MARKER;
-          if (lastWayMarker != newWayMarker)
-          {
-            goClockwise();
-            lastWayMarker = newWayMarker;
-          }
-          return;
-        }
-
-        if (directionOfTravel < edgeLeft && directionOfTravel < edgeOpposingTarget)
-        {
-          newWayMarker = GO_ANTICLOCKWISE_MARKER;
-          if (lastWayMarker != newWayMarker)
-          {
-            goClockwise();
-            lastWayMarker = newWayMarker;
-          }
-          return;
-        }
-
-
-        newWayMarker = UNKNOWN_MARKER;
-
-        if (lastWayMarker != newWayMarker)
-        {
-          goUnknown();
-          lastWayMarker = newWayMarker;
-        }
-      }
-    }
-  }
-}
-
 void goBlackout()
 {
   drawGoUnknown(false);
@@ -2836,9 +2719,9 @@ void drawGoUnknown(const bool show)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool getSmoothedMagHeading(float& b)
+bool getSmoothedMagHeading(double& b)
 {
-  float magHeading = 0;
+  double magHeading = 0;
 
   if (getMagHeadingTiltCompensated(magHeading) == false)
   {
@@ -2874,9 +2757,9 @@ bool getSmoothedMagHeading(float& b)
       magHeadingInNWQuadrantFound = true;
   }
 
-  float offset = (magHeadingInNWQuadrantFound && magHeadingInNEQuadrantFound ? 90.0 : 0.0);
+  double offset = (magHeadingInNWQuadrantFound && magHeadingInNEQuadrantFound ? 90.0 : 0.0);
 
-  float shifted = 0.0;
+  double shifted = 0.0;
   for (uint8_t index = s_nextCompassSampleIndex; index < s_nextCompassSampleIndex + s_smoothCompassBufferSize; index++)
   {
     shifted = s_smoothedCompassHeading[index % s_smoothCompassBufferSize] + offset;
@@ -2886,7 +2769,7 @@ bool getSmoothedMagHeading(float& b)
     magHeading = magHeading + shifted;
   }
 
-  magHeading = (magHeading / (float)s_smoothCompassBufferSize)  - offset;
+  magHeading = (magHeading / (double)s_smoothCompassBufferSize)  - offset;
 
   if (magHeading < 0.0)
     magHeading += 360.0;
@@ -2911,7 +2794,7 @@ bool getSmoothedMagHeading(float& b)
    into the horizontal plane and the angle between the projected vector
    and horizontal north is returned.
 */
-template <typename T> float magHeading(vector<T> from)
+template <typename T> double magHeading(vector<T> from)
 {
   sensors_event_t event;
   mag.getEvent(&event);
@@ -2925,8 +2808,8 @@ template <typename T> float magHeading(vector<T> from)
   magnetometer_vector.y -= (magnetometer_min.y + magnetometer_max.y) / 2.0;
   magnetometer_vector.z -= (magnetometer_min.z + magnetometer_max.z) / 2.0;
   // Compute east and north vectors
-  vector<float> east;
-  vector<float> north;
+  vector<double> east;
+  vector<double> north;
   vector_cross(&magnetometer_vector, &accelerometer_vector, &east);
   vector_normalize(&east);
   vector_cross(&accelerometer_vector, &east, &north);
@@ -2952,9 +2835,9 @@ template <typename Ta, typename Tb> float vector_dot(const vector<Ta> *a, const 
   return (a->x * b->x) + (a->y * b->y) + (a->z * b->z);
 }
 
-void vector_normalize(vector<float> *a)
+void vector_normalize(vector<double> *a)
 {
-  float mag = sqrt(vector_dot(a, a));
+  double mag = sqrt(vector_dot(a, a));
   a->x /= mag;
   a->y /= mag;
   a->z /= mag;
@@ -2964,11 +2847,9 @@ void vector_normalize(vector<float> *a)
    Returns the angular difference in the horizontal plane between a default vector and north, in degrees.
    The default vector here is the +X axis as indicated by the silkscreen.
 */
-bool getMagHeadingTiltCompensated(float& tiltCompensatedHeading)
+bool getMagHeadingTiltCompensated(double& tiltCompensatedHeading)
 {
-  float tch = magHeading((vector<int>) {
-    1, 0, 0
-  });
+  double tch = magHeading((vector<int>) {1, 0, 0});
 
   if (isnan(tch))
   {
@@ -2989,11 +2870,11 @@ bool getMagHeadingTiltCompensated(float& tiltCompensatedHeading)
   return true;
 }
 
-bool getMagHeadingNotTiltCompensated(float& newHeading)
+bool getMagHeadingNotTiltCompensated(double& newHeading)
 {
   sensors_event_t magEvent;
   mag.getEvent(&magEvent);
-  float heading = (atan2(magEvent.magnetic.y, magEvent.magnetic.x) * 180.0) / PI;
+  double heading = (atan2(magEvent.magnetic.y, magEvent.magnetic.x) * 180.0) / PI;
 
   if (isnan(heading))
     return false;
