@@ -182,7 +182,7 @@ AsyncWebServer asyncWebServer(80);
 const uint32_t disabledTempDisplayEndTime = 0xFFFFFFFF;
 uint32_t showTempDisplayEndTime = disabledTempDisplayEndTime;
 const uint32_t showTempDisplayHoldDuration = 5000;
-const uint32_t showTempAudioTestDisplayHoldDuration = 500;
+const uint32_t showTempAudioTestDisplayHoldDuration = 1000;
 
 char uplink_preamble_pattern[] = "MBJAEJ";
 char uplinkTestMessages[][6] = {"MSG0 ", "MSG1 ", "MSG2 ", "MSG3 "};
@@ -265,6 +265,7 @@ class navigationWaypoint
     }
 };
 
+/*
 const uint8_t waypointCount = 10;
 const uint8_t waypointExit = 6;
 
@@ -281,8 +282,8 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
   [8] = { ._label = "Old\nJetty",  ._lat = 51.459280, ._long = -0.547084},
   [9] = { ._label = "Mark's\nGaff", ._lat = 51.391231, ._long = -0.287616}
 };
+*/
 
-/*
 const uint8_t waypointCount = 20;
 const uint8_t waypointExit = 19;
 
@@ -309,7 +310,6 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
   [18] = { ._label = "Pine-Manor 2", ._lat = 51.3913202, ._long = -0.2869346},
   [19] = { ._label = "End", ._lat = 51.3915538, ._long = -0.2873525}
 };
-*/
 
 navigationWaypoint* nextWaypoint = diveOneWaypoints;
 
@@ -558,8 +558,6 @@ bool goProButtonsPrimaryControl = true;
 void readAndTestGoProButtons();
 
 void shutdownIfUSBPowerOff();
-
-void refreshDepthDisplay();
 
 float hallOffset = 0;  // Store the initial value of magnetic force
 const float magnetHallReadingForReset = -50;
@@ -1218,7 +1216,7 @@ void checkForButtonPresses()
 
     case LOCATION_DISPLAY:
     {
-      if (p_primaryButton->wasReleasefor(1000)) // Location Display: toggle ota only
+      if (p_primaryButton->wasReleasefor(1000)) // Location Display: toggle ota (and wifi if needed)
       {
         toggleOTAActive();
       }
@@ -1254,13 +1252,6 @@ void checkForButtonPresses()
     
     case AUDIO_TEST_DISPLAY:
     {
-      /*
-          M5.Lcd.println("Toggle ESPNow: Top 10s\n");
-          M5.Lcd.println("Start/Stop Play: Side 0.5s\n");
-          M5.Lcd.println("Vol cycle: Side 2s\n");
-          M5.Lcd.println("Next Track: Side 5s\n");
-      */
-  
       if (p_primaryButton->wasReleasefor(5000))    // toggle between espnow and wifi
       {
         toggleESPNowActive();
@@ -1340,7 +1331,7 @@ void checkForButtonPresses()
       {
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
         // head to next target, if at end of target list go to the top of the list
-        
+
         if (++nextWaypoint == diveOneWaypoints + waypointCount)
           nextWaypoint = diveOneWaypoints;
           
@@ -1587,14 +1578,15 @@ void drawTargetSection()
     // Display number of satellites
     M5.Lcd.setTextSize(2);
     M5.Lcd.setCursor(x + 8, y + 40);
-    if (satellites < 4)
+    if (satellites < 4.0)
       M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
-    else if (hdop < 6)
+    else if (satellites < 6.0)
       M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
-    else if (hdop < 10)
+    else if (satellites < 10.0)
       M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
     else
       M5.Lcd.setTextColor(TFT_BLUE, TFT_BLACK);
+      
     M5.Lcd.printf("%2lu", satellites);
 
     // Display distance to target in metres, with by 'm' suffix
@@ -1613,10 +1605,9 @@ void drawTargetSection()
       metre_offset = 14;
       M5.Lcd.setCursor(x, y + metre_offset);
       M5.Lcd.print("m");
-
-      // Clear any extra line used by distance where distance > 999m and wrap has occurred
-      M5.Lcd.setTextSize(0);
-      M5.Lcd.print("\n\n\n\n\n");
+      M5.Lcd.setCursor(x, y);
+      M5.Lcd.setTextSize(5);
+      M5.Lcd.println("");
     }
     else
     {
@@ -1672,7 +1663,11 @@ void drawCompassSection()
     if (GPS_status == GPS_FIX_FROM_FLOAT)
       refreshDirectionGraphic(directionOfTravel, heading_to_target);
 
-    refreshDepthDisplay();
+    M5.Lcd.setCursor(30, 146);
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.setTextFont(0);
+    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+    M5.Lcd.printf("%4.1fm", depth);
 
     blackout_journey_no_movement = false;
 }
@@ -1727,8 +1722,6 @@ void drawCourseSection()
     {
       // do nothing
     } 
-
-    refreshDepthDisplay();
 }
 
 void drawNextTarget()
@@ -1773,44 +1766,44 @@ void drawAudioActionDisplay()
   switch (audioAction)
   {
     case AUDIO_ACTION_NEXT_SOUND:
-      M5.Lcd.println("Silky:\nSkip to Next Sound");
+      M5.Lcd.println("Silky:\nSkip to Next Sound\n");
       displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
     case AUDIO_ACTION_CYCLE_VOLUME:
-      M5.Lcd.printf("Silky:\nCycle volume up %u",silkyVolume);
+      M5.Lcd.printf("Silky:\nCycle volume up %u\n",silkyVolume);
       displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
     case AUDIO_ACTION_SOUNDS_TOGGLE:
-      M5.Lcd.println(soundsOn ? "Silky:\nSounds On" : "Silky:\nSounds Off"); 
+      M5.Lcd.println(soundsOn ? "Silky:\nSounds On\n" : "Silky:\nSounds Off\n"); 
       displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
     case AUDIO_ACTION_PLAYBACK_TOGGLE:
-      M5.Lcd.println("Silky:\nToggle Playback");
+      M5.Lcd.println("Silky:\nToggle Playback\n");
       displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
     case AUDIO_ACTION_STOP_PLAYBACK:
-      M5.Lcd.println("Silky:\nStop Playback");
+      M5.Lcd.println("Silky:\nStop Playback\n");
       displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
     case AUDIO_ACTION_NONE:
       // shouldn't get here
-      M5.Lcd.println("Silky:\nAudio Action None");
+      M5.Lcd.println("Silky:\nAudio Action None\n");
       displayESPNowSendDataResult(ESPNowSendResult);
       break;
 
     case RESET_ESPNOW_SEND_RESULT:
       // shouldn't get here
-      M5.Lcd.println("Silky:\nAudio Action Reset");
+      M5.Lcd.println("Silky:\nAudio Action Reset\n");
       break;
 
     default:
       // shouldn't get here
-      M5.Lcd.println("Silky:\nUndefined Audio Action");
+      M5.Lcd.println("Silky:\nUndefined Audio Action\n");
       break;      
   }
 
@@ -1846,10 +1839,11 @@ void drawLatLong()
   M5.Lcd.setTextColor(TFT_BLACK, TFT_GREEN);
   M5.Lcd.printf("Location Here\n");
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  M5.Lcd.printf("La:%.5f\n", Lat);
-  M5.Lcd.printf("Lo:%.5f\n", Lng);
-  M5.Lcd.printf("%02d:%02d:%02d\n", gps.time.hour(), gps.time.minute(), gps.time.second());
-  M5.Lcd.printf("%02d/%02d/%02d\n", gps.date.day(), gps.date.month(), gps.date.year());
+  M5.Lcd.printf("N:%.7f\n", Lat);
+  M5.Lcd.printf("E:%.7f\n", Lng);
+  M5.Lcd.printf("Depth: %.3fm\n", depth);
+  M5.Lcd.printf("Dive: %hu mins",minutesDurationDiving);
+  M5.Lcd.printf("%02d:%02d:%02d %02d%02d", gps.time.hour(), gps.time.minute(), gps.time.second(), gps.date.day(), gps.date.month());
 
   if (millis() > showTempDisplayEndTime)
   {
@@ -1866,26 +1860,34 @@ void drawLocationStats()
   M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
 
   M5.Lcd.setCursor(5, 0);
-  M5.Lcd.printf("La:%.9f   ", Lat);
+  M5.Lcd.printf("La:%.6f   ", Lat);
   M5.Lcd.setCursor(5, 17);
-  M5.Lcd.printf("Lo:%.9f   ", Lng);
-  M5.Lcd.setCursor(5, 34);
+  M5.Lcd.printf("Lo:%.6f   ", Lng);
 
+  M5.Lcd.setCursor(5, 34);
   M5.Lcd.printf("Depth:%.0f m  ", depth);
+
   M5.Lcd.setCursor(5, 51);
-  M5.Lcd.printf("Water P:%.1f% Bar", water_pressure);
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    M5.Lcd.printf("%s ", WiFi.localIP().toString());
+    if (otaActiveListening)
+      M5.Lcd.println("OTA");
+    else
+      M5.Lcd.println("");
+  }
+  else
+  {
+    if (ESPNowActive)
+    {
+      M5.Lcd.print(WiFi.macAddress());
+    }
+    else
+      M5.Lcd.print("WiFi & ESPNow: Off");
+  }
 
   M5.Lcd.setCursor(5, 68);
-  M5.Lcd.printf("T:%s", nextWaypoint->_label);
-
-  M5.Lcd.setCursor(5, 85);
-  if (WiFi.status() == WL_CONNECTED)
-    M5.Lcd.printf("IP: %s", WiFi.localIP().toString());
-  else
-    M5.Lcd.printf("IP: No WiFi");
-
-  M5.Lcd.setCursor(5, 102);
-  M5.Lcd.printf("crs: %.0f d: %.0f    ", heading_to_target, distance_to_target);
+  M5.Lcd.printf("T: (%d)\n%s", (int)(nextWaypoint - diveOneWaypoints)+1, nextWaypoint->_label);
 }
 
 void drawJourneyStats()
@@ -2442,15 +2444,6 @@ void testForDualButtonPressAutoShutdownChange()
   }
 }
 
-void refreshDepthDisplay()
-{
-  M5.Lcd.setCursor(30, 151);
-  M5.Lcd.setTextSize(3);
-  M5.Lcd.setTextFont(0);
-  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  M5.Lcd.printf("%4.1fm", depth);
-}
-
 void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
 {
   if (!enableNavigationGraphics)
@@ -2782,10 +2775,10 @@ void drawGoTurnAround(const bool show)
   {
     M5.Lcd.setTextSize(2);
     M5.Lcd.setTextColor(TFT_BLACK, TFT_CYAN);
-    M5.Lcd.setCursor(45, 180);
+    M5.Lcd.setCursor(40, 180);
+    M5.Lcd.print("About");
+    M5.Lcd.setCursor(45, 200);
     M5.Lcd.print("Turn");
-    M5.Lcd.setCursor(30, 200);
-    M5.Lcd.print("Around");
   }
 }
 
@@ -3191,6 +3184,7 @@ void toggleOTAActive()
 {
   M5.Lcd.fillScreen(TFT_ORANGE);
   M5.Lcd.setCursor(0, 0);
+  M5.Lcd.setRotation(1);
 
   if (otaActiveListening)
   {
@@ -3201,6 +3195,18 @@ void toggleOTAActive()
   }
   else
   {
+    bool wifiToggled = false;
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      toggleWiFiActive();
+      wifiToggled = true;
+
+      M5.Lcd.fillScreen(TFT_ORANGE);
+      M5.Lcd.setCursor(0, 0);
+      M5.Lcd.setRotation(1);
+    }
+
+
     if (WiFi.status() == WL_CONNECTED)
     {
       if (otaFirstInit == false)
@@ -3214,13 +3220,19 @@ void toggleOTAActive()
       }
 
       asyncWebServer.begin();
-      M5.Lcd.printf("OTA Enabled");
+
+      if (wifiToggled)
+        M5.Lcd.printf("OTA & WiFi Enabled");
+      else
+        M5.Lcd.printf("OTA Enabled");
+              
       otaActiveListening = true;
     }
     else
     {
       M5.Lcd.println("Error: Enable Wifi First");
     }
+    
     delay (2000);
   }
 
@@ -3429,7 +3441,7 @@ void toggleESPNowActive()
         USB_SERIAL.println("ESPNow Disabled");
     }
     
-    delay (2000);
+    delay (500);
   
     M5.Lcd.fillScreen(TFT_BLACK);
   }
