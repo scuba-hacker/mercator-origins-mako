@@ -1046,20 +1046,27 @@ bool processGPSMessageIfAvailable()
         {
           passedChecksumCount = newPassedChecksum;
 
-          // At this point a new lat/long fix has been received and is available.
-          refreshAndCalculatePositionalAttributes();
-
-          acquireAllSensorReadings(); // compass, IMU, Depth, Temp, Humidity, Pressure
+          if (gps.isSentenceGGA())      // only send uplink message back for GGA messages
+          {
+            // At this point a new lat/long fix has been received and is available.
+            refreshAndCalculatePositionalAttributes();
   
-          checkDivingDepthForTimer(depth);
-
-          refreshConsoleScreen();
+            acquireAllSensorReadings(); // compass, IMU, Depth, Temp, Humidity, Pressure
+    
+            checkDivingDepthForTimer(depth);
   
-          checkForButtonPresses();
+            refreshConsoleScreen();
+    
+            checkForButtonPresses();
   
-          performUplinkTasks();
-
-          result = true;
+            performUplinkTasks();
+            
+            result = true;
+          }
+          else
+          {
+            result = false;
+          }
         }
       }
       else
