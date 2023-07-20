@@ -242,7 +242,7 @@ char audioActionDisplayLabel[] = "AA";
 char undefinedDisplayLabel[] = "??";
 
 uint32_t recordHighlightExpireTime = 0;
-uint32_t recordHighlightDisplayDuration = 3000; // 3 seconds
+uint32_t recordHighlightDisplayDuration = 10000;
 bool     recordSurveyHighlight = false;
 
 class navigationWaypoint
@@ -266,7 +266,6 @@ class navigationWaypoint
     }
 };
 
-/*
 const uint8_t waypointCount = 10;
 const uint8_t waypointExit = 6;
 
@@ -283,7 +282,7 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
   [8] = { ._label = "Old\nJetty",  ._lat = 51.459280, ._long = -0.547084},
   [9] = { ._label = "Mark's\nGaff", ._lat = 51.391231, ._long = -0.287616}
 };
-*/
+
 /*
 const uint8_t waypointCount = 20;
 const uint8_t waypointExit = 19;
@@ -313,7 +312,7 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
 };
 
 */
-
+/*
 // Actual recorded waypoints around the neighbourhood, not from google maps
 
 const uint8_t waypointCount = 16;
@@ -338,6 +337,7 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
   [14] = { ._label = "Silver Birch", ._lat = 51.3910167, ._long = -0.2874398},
   [15] = { ._label = "Lamp post", ._lat = 51.3907690, ._long = -0.2878912}
 };
+*/
 
 navigationWaypoint* nextWaypoint = diveOneWaypoints;
 
@@ -600,6 +600,9 @@ void updateButtonsAndBuzzer()
 void setup()
 {
   M5.begin();
+
+  pinMode(IR_LED_GPS_TX_PIN, OUTPUT);
+  digitalWrite(IR_LED_GPS_TX_PIN, HIGH); // switch off
 
   M5.Lcd.setTextSize(tb_buffer_chosenTextSize);
 
@@ -1465,23 +1468,23 @@ void drawSurveyDisplay()
     {
       if (millis() < recordHighlightExpireTime)
       {
-        M5.Lcd.printf("HIGH\n");
+        M5.Lcd.printf("-PIN-\n");
       }
       else
       {
         recordHighlightExpireTime = 0;
-        M5.Lcd.print("    \n");
+        M5.Lcd.print("     \n");
       }
     }
     else
     {
       if  (millis() - journey_clear_period > last_journey_commit_time || journey_distance == 0)
       {
-        M5.Lcd.print("    \n");
+        M5.Lcd.print("     \n");
       }
       else
       {
-        M5.Lcd.printf(" %3s\n", getCardinal(journey_course).c_str());
+        M5.Lcd.printf(" %3s \n", getCardinal(journey_course).c_str());
       }
     }
         
@@ -2203,8 +2206,9 @@ uint16_t getOneShotUserActionForUplink()
 {
   int userAction = NO_USER_ACTION;
   
-  if (recordSurveyHighlight)
+  if (recordSurveyHighlight || recordHighlightExpireTime != 0)
   {
+    // log the highlight in all messages for the time the highlight is shown on the screen (5 seconds)
     recordSurveyHighlight = false;
     userAction |= HIGHLIGHT_USER_ACTION;
   }
