@@ -25,7 +25,7 @@ bool soundsOn = true;
 const uint8_t defaultSilkyVolume = 9;
 uint8_t silkyVolume = defaultSilkyVolume;
 
-esp_now_peer_info_t ESPNow_slave;
+esp_now_peer_info_t ESPNow_audio_pod;
 
 const int RESET_ESPNOW_SEND_RESULT = 0xFF;
 esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
@@ -35,7 +35,7 @@ enum e_audio_action {AUDIO_ACTION_NONE, AUDIO_ACTION_NEXT_SOUND, AUDIO_ACTION_CY
 e_audio_action audioAction = AUDIO_ACTION_NONE;
 
 const uint8_t ESPNOW_CHANNEL = 1;
-const uint8_t ESPNOW_NO_SLAVE_CHANNEL_FLAG = 0xFF;
+const uint8_t ESPNOW_NO_PEER_CHANNEL_FLAG = 0xFF;
 const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
 const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
 
@@ -266,21 +266,28 @@ class navigationWaypoint
     }
 };
 
-const uint8_t waypointCount = 10;
-const uint8_t waypointExit = 6;
+const uint8_t waypointCount = 17;
+const uint8_t waypointExit = 0;
 
 navigationWaypoint diveOneWaypoints[waypointCount] =
 {
-  [0] = { ._label = "Confined\nArea", ._lat = 51.459987, ._long = -0.548600},
-  [1] = { ._label = "Bus", ._lat = 51.460073, ._long = -0.548515},
-  [2] = { ._label = "Ship\nContainer", ._lat = 51.460014, ._long = -0.548735},
-  [3] = { ._label = "Cotton\nReel",  ._lat = 51.461496, ._long = -0.549753},
-  [4] = { ._label = "The\nSource", ._lat = 51.462418, ._long = -0.549491},
-  [5] = { ._label = "Mystery?", ._lat = 51.459745, ._long = -0.546649},   // plane?
-  [6] = { ._label = "Buttie\nJetty", ._lat = 51.460015, ._long = -0.548316},    // jetty near dive centre
-  [7] = { ._label = "Mid\nJetty", ._lat = 51.459547, ._long = -0.547461},
-  [8] = { ._label = "Old\nJetty",  ._lat = 51.459280, ._long = -0.547084},
-  [9] = { ._label = "Mark's\nGaff", ._lat = 51.391231, ._long = -0.287616}
+  [0] =  { ._label = "Mid\nJetty\n(TBC)", ._lat = 51.459547, ._long = -0.547461},  // from Bing or google - TBC
+  [1] =  { ._label = "Search\nLight\nBoat\n(TBC)", ._lat = 51.459919, ._long = -0.547681},  // Lady of Kent, from Neo-6M - Dive 2 on 21 July -  TBC
+  [2] =  { ._label = "Cement\nMixer\n(TBC)", ._lat = 51.460038, ._long = -0.547882},  // from Neo-6M - Dive 2 on 21 July - TBC
+  [3] =  { ._label = "Tyre\n(TBC)", ._lat = 51.460053, ._long = -0.548184},  // from Neo-6M Dive 2 on 21 July - TBC
+  [4] =  { ._label = "Cafe\nJetty\n(TBC)", ._lat = 51.460015, ._long = -0.548316},    // from Bing or google - jetty near dive centre - TBC
+  [5] =  { ._label = "Container\nRusty\n8m(TBC)", ._lat = 51.460192, ._long = -0.548283},  // from Neo-6M Dive 2 on 21 July - TBC
+  [6] =  { ._label = "Bus^", ._lat = 51.460073, ._long = -0.548515},        // Got from Bing, confirmed with Neo-6M
+  [7] =  { ._label = "Confined\nArea\n(TBC)", ._lat = 51.459999, ._long = -0.548590}, // Got from Google Maps - TBC
+  [8] =  { ._label = "Container\nNear\nBus\n2.5m^", ._lat = 51.460014, ._long = -0.548735},  // Got from Bing, confirmed with Neo-6M
+  [9] =  { ._label = "Unknown 1\n(TBC)", ._lat = 51.460069, ._long = -0.548567},  // from Neo-6M Dive 2 on 21 July - TBC
+  [10] = { ._label = "Unknown 2\n(TBC)", ._lat = 51.460130, ._long = -0.548850},  // from Neo-6M Dive 2 on 21 July - TBC
+  [11] = { ._label = "Reliant\nScimatar\nCar\n(TBC)", ._lat = 51.46016, ._long = -0.54873},  // Got from Dive 2 21-07-2023 with Neo-6M, TBC
+  [12] = { ._label = "Caves\n7m(TBC M5)", ._lat = 51.460725, ._long = -0.548896},  // Got from Dive 1 21-07-2023 with M5, TBC
+  [13] = { ._label = "Multi\nBoat\nWrecks\n(TBC M5)", ._lat = 51.460843, ._long = -0.548369},  // Got from Dive 1 21-07-2023 with M5, TBC
+  [14] = { ._label = "Mystery?\nPlane?\n(TBC)", ._lat = 51.459745, ._long = -0.546649},   // Got from bing  - plane? - TBC
+  [15] = { ._label = "Old\nJetty\n(TBC)",  ._lat = 51.459280, ._long = -0.547084},  // from Bing or google - TBC
+  [16] = { ._label = "The\nGaff", ._lat = 51.391231, ._long = -0.287616}
 };
 
 /*
@@ -488,7 +495,7 @@ void getM5ImuSensorData(float* gyro_x, float* gyro_y, float* gyro_z,
   }
   else
   {
-    *gyro_x = *gyro_y = *gyro_z = *lin_acc_x = *lin_acc_y = *lin_acc_z = *rot_acc_x = *rot_acc_y = *rot_acc_z = *IMU_temperature = 0.1;
+    *gyro_x = *gyro_y = *gyro_z = *lin_acc_x = *lin_acc_y = *lin_acc_z = *rot_acc_x = *rot_acc_y = *rot_acc_z = *IMU_temperature = 0.0;
   }
 }
 
@@ -608,7 +615,7 @@ void setup()
 
 //  tb_display_init(tb_buffer_screen_orientation, M5.Lcd.textsize);
 //  tb_display_print_String("Mercator Origins - Text Buffer Enabled\n");
-  delay(1000);
+//  delay(1000);
 
   if (enableIMUSensor)
   {
@@ -616,7 +623,10 @@ void setup()
   }
   else
   {
-    USB_SERIAL.println("IMU Sensor Off");
+    if (writeLogToSerial)
+    {
+      USB_SERIAL.println("IMU Sensor Off");
+    }
     M5.Lcd.println("IMU Sensor Off");
     imuAvailable = false;
   }
@@ -2260,7 +2270,7 @@ void sendUplinkTelemetryMessageV5()
     uint16_t uplink_mako_usb_current = M5.Axp.GetVBusCurrent() * 100.0;
 
     uint16_t uplink_mako_bat_voltage = M5.Axp.GetBatVoltage() * 1000.0;
-    uint16_t uplink_mako_bat_charge_current = M5.Axp.GetBatCurrent() * 100.0;
+    uint16_t uplink_mako_bat_charge_current = M5.Axp.GetBatChargeCurrent() * 100.0;
 
     float uplink_mako_lsm_mag_x = magnetometer_vector.x;
     float uplink_mako_lsm_mag_y = magnetometer_vector.y;
@@ -3193,10 +3203,10 @@ void displayESPNowSendDataResult(const esp_err_t result)
 
 void publishToSilkyPlayAudioGuidance(enum e_soundFX sound)
 {
-  if (ESPNowActive && soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
   {
     ESPNow_data_to_send = (uint8_t)sound;
-    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
     ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
     audioAction = AUDIO_ACTION_NONE;
@@ -3205,11 +3215,11 @@ void publishToSilkyPlayAudioGuidance(enum e_soundFX sound)
 
 void publishToSilkySkipToNextTrack()
 {
-  if (ESPNowActive && soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
   {
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_NEXT_TRACK;
-    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
     ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
 
     audioAction = AUDIO_ACTION_NEXT_SOUND;
@@ -3218,7 +3228,7 @@ void publishToSilkySkipToNextTrack()
 
 void publishToSilkyCycleVolumeUp()
 {
-  if (ESPNowActive && soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
   {
     if (silkyVolume == 9)
       silkyVolume = 1;
@@ -3227,7 +3237,7 @@ void publishToSilkyCycleVolumeUp()
       
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP;
-    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
     ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
     audioAction = AUDIO_ACTION_CYCLE_VOLUME;
   }
@@ -3235,13 +3245,13 @@ void publishToSilkyCycleVolumeUp()
 
 void publishToSilkySetVolume(const uint8_t newVolume)
 {
-  if (ESPNowActive && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  if (ESPNowActive && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
   {
     silkyVolume = newVolume;
       
     // Send byte command to Silky to say skip to next track
     uint16_t ESPNow_word_to_send = ((uint16_t)silkyVolume << 8) | (uint16_t)SILKY_ESPNOW_COMMAND_SET_VOLUME;
-    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
     ESPNowSendResult = esp_now_send(peer_addr, (uint8_t*)&ESPNow_word_to_send, sizeof(ESPNow_word_to_send));
     audioAction = AUDIO_ACTION_NONE;
   }
@@ -3249,11 +3259,11 @@ void publishToSilkySetVolume(const uint8_t newVolume)
 
 void publishToSilkyTogglePlayback()
 {
-  if (ESPNowActive && soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
   {
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK;
-    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
     ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
     audioAction = AUDIO_ACTION_PLAYBACK_TOGGLE;
   }
@@ -3261,11 +3271,11 @@ void publishToSilkyTogglePlayback()
 
 void publishToSilkyStopPlayback()
 {
-  if (ESPNowActive && !soundsOn && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  if (ESPNowActive && !soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
   {
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_STOP_PLAYBACK;
-    const uint8_t *peer_addr = ESPNow_slave.peer_addr;
+    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
     ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
     audioAction = AUDIO_ACTION_STOP_PLAYBACK;
   }
@@ -3273,39 +3283,11 @@ void publishToSilkyStopPlayback()
 
 void notifySoundsOnOffChanged()
 {
-  if (ESPNowActive && ESPNow_slave.channel == ESPNOW_CHANNEL)
+  if (ESPNowActive && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
   {
     ESPNowSendResult = ESP_OK;
     audioAction = AUDIO_ACTION_SOUNDS_TOGGLE;
   }
-}
-
-bool pairWithAudioPod()
-{
-  int maxAttempts = 3;
-  bool isPaired = false;
-  while(maxAttempts-- && !isPaired)
-  {
-    bool result = ESPNowScanForSlave();
-
-    if (result && ESPNow_slave.channel == ESPNOW_CHANNEL)
-    { 
-      // check if slave channel is defined
-      isPaired = ESPNowManageSlave();
-      M5.Lcd.println("Paired with Audio Pod");
-    }
-    else
-    {
-      ESPNow_slave.channel = ESPNOW_NO_SLAVE_CHANNEL_FLAG;
-      M5.Lcd.println("Not Paired: Audio");
-    }
-  }
-
-  delay(500);
-  
-  M5.Lcd.fillScreen(TFT_BLACK);
-  
-  return isPaired;
 }
 
 void toggleESPNowActive()
@@ -3316,7 +3298,7 @@ void toggleESPNowActive()
     M5.Lcd.setCursor(0, 0);
     M5.Lcd.setTextSize(2);
 
-    bool slaveFound = false;
+    bool audioPodFound = false;
     
     bool disabledWiFi = false;
     
@@ -3344,11 +3326,11 @@ void toggleESPNowActive()
         if (writeLogToSerial)
           USB_SERIAL.println("Wifi Disabled\nESPNow Enabled");
 
-        isPairedWithAudioPod = pairWithAudioPod();
+        isPairedWithAudioPod = pairWithPeer(ESPNow_audio_pod,"AudioPod");
         
         if (isPairedWithAudioPod)
         {
-          slaveFound = true;
+          audioPodFound = true;
           // set Silky volume to default.
           publishToSilkySetVolume(defaultSilkyVolume);
         }
@@ -3989,7 +3971,7 @@ bool TeardownESPNow()
 
 char ESPNowDiagBuffer[256];
 
-// callback when data is sent from Master to Slave
+// callback when data is sent from Master to Peer
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) 
 {
   if (status == ESP_NOW_SEND_SUCCESS)
@@ -4041,16 +4023,15 @@ void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 */
 }
 
-
-// Scan for slaves in AP mode
-bool ESPNowScanForSlave()
+// Scan for peers in AP mode
+bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
 {
-  bool slaveFound = false;
+  bool peerFound = false;
   
   int8_t scanResults = WiFi.scanNetworks();
   // reset on each scan
  
-  memset(&ESPNow_slave, 0, sizeof(ESPNow_slave));
+  memset(&peer, 0, sizeof(peer));
 
   if (writeLogToSerial)
     USB_SERIAL.println("");
@@ -4060,7 +4041,7 @@ bool ESPNowScanForSlave()
     if (writeLogToSerial)
       USB_SERIAL.println("No WiFi devices in AP Mode found");
 
-    ESPNow_slave.channel = ESPNOW_NO_SLAVE_CHANNEL_FLAG;
+    peer.channel = ESPNOW_NO_PEER_CHANNEL_FLAG;
   } 
   else 
   {
@@ -4089,13 +4070,13 @@ bool ESPNowScanForSlave()
       
       delay(10);
       
-      // Check if the current device starts with `Slave`
-      if (SSID.indexOf("Slave") == 0) 
+      // Check if the current device starts with the peerSSIDPrefix
+      if (SSID.indexOf(peerSSIDPrefix) == 0) 
       {
         if (writeLogToSerial)
         {
           // SSID of interest
-          USB_SERIAL.println("Found a Slave.");
+          USB_SERIAL.println("Found a peer.");
           USB_SERIAL.print(i + 1); USB_SERIAL.print(": "); USB_SERIAL.print(SSID); USB_SERIAL.print(" ["); USB_SERIAL.print(BSSIDstr); USB_SERIAL.print("]"); USB_SERIAL.print(" ("); USB_SERIAL.print(RSSI); USB_SERIAL.print(")"); USB_SERIAL.println("");
         }
                 
@@ -4105,14 +4086,14 @@ bool ESPNowScanForSlave()
         {
           for (int ii = 0; ii < 6; ++ii ) 
           {
-            ESPNow_slave.peer_addr[ii] = (uint8_t) mac[ii];
+            peer.peer_addr[ii] = (uint8_t) mac[ii];
           }
         }
 
-        ESPNow_slave.channel = ESPNOW_CHANNEL; // pick a channel
-        ESPNow_slave.encrypt = 0; // no encryption
+        peer.channel = ESPNOW_CHANNEL; // pick a channel
+        peer.encrypt = 0; // no encryption
 
-        slaveFound = true;
+        peerFound = true;
         // we are planning to have only one slave in this example;
         // Hence, break after we find one, to be a bit efficient
         break;
@@ -4120,47 +4101,76 @@ bool ESPNowScanForSlave()
     }
   }
 
-  if (slaveFound) 
+  if (peerFound) 
   {
-    M5.Lcd.println("Slave Found");
+    M5.Lcd.println("Peer Found");
     if (writeLogToSerial)
-      USB_SERIAL.println("Slave Found, processing..");
+      USB_SERIAL.println("Peer Found, processing..");
   } 
   else 
   {
-    M5.Lcd.println("Slave Not Found");
+    M5.Lcd.println("Peer Not Found");
     if (writeLogToSerial)
-      USB_SERIAL.println("Slave Not Found, trying again.");
+      USB_SERIAL.println("Peer Not Found, trying again.");
   }
   
   // clean up ram
   WiFi.scanDelete();
 
-  return slaveFound;
+  return peerFound;
 }
 
-// Check if the slave is already paired with the master.
-// If not, pair the slave with master
-bool ESPNowManageSlave() 
+
+bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
+{
+  int maxAttempts = 3;
+  bool isPaired = false;
+  while(maxAttempts-- && !isPaired)
+  {
+    bool result = ESPNowScanForPeer(peer,peerSSIDPrefix);
+
+    // check if peer channel is defined
+    if (result && peer.channel == ESPNOW_CHANNEL)
+    { 
+      isPaired = ESPNowManagePeer(peer);
+      M5.Lcd.println("Paired with peer");
+    }
+    else
+    {
+      peer.channel = ESPNOW_NO_PEER_CHANNEL_FLAG;
+      M5.Lcd.println("Not Paired with peer");
+    }
+  }
+
+  delay(500);
+  
+  M5.Lcd.fillScreen(TFT_BLACK);
+  
+  return isPaired;
+}
+
+// Check if the peer is already paired with the master.
+// If not, pair the peer with master
+bool ESPNowManagePeer(esp_now_peer_info_t& peer)
 {
   bool result = false;
   
-  if (ESPNow_slave.channel == ESPNOW_CHANNEL) 
+  if (peer.channel == ESPNOW_CHANNEL) 
   {
     if (ESPNOW_DELETEBEFOREPAIR) 
     {
-      ESPNowDeletePeer();
+      ESPNowDeletePeer(peer);
     }
 
     if (writeLogToSerial)
-      USB_SERIAL.print("Slave Status: ");
+      USB_SERIAL.print("Peer Status: ");
       
     // check if the peer exists
-    bool exists = esp_now_is_peer_exist(ESPNow_slave.peer_addr);
+    bool exists = esp_now_is_peer_exist(peer.peer_addr);
     
     if (exists) 
     {
-      // Slave already paired.
+      // Peer already paired.
       if (writeLogToSerial)
         USB_SERIAL.println("Already Paired");
 
@@ -4169,8 +4179,8 @@ bool ESPNowManageSlave()
     } 
     else 
     {
-      // Slave not paired, attempt pair
-      esp_err_t addStatus = esp_now_add_peer(&ESPNow_slave);
+      // Peer not paired, attempt pair
+      esp_err_t addStatus = esp_now_add_peer(&peer);
       
       if (addStatus == ESP_OK) 
       {
@@ -4221,26 +4231,26 @@ bool ESPNowManageSlave()
   }
   else 
   {
-    // No slave found to process
+    // No peer found to process
     if (writeLogToSerial)
-      USB_SERIAL.println("No Slave found to process");
+      USB_SERIAL.println("No Peer found to process");
     
-    M5.Lcd.println("No Slave found to process");
+    M5.Lcd.println("No Peer found to process");
     result = false;
   }
 
   return result;
 }
 
-void ESPNowDeletePeer() 
+void ESPNowDeletePeer(esp_now_peer_info_t& peer) 
 {
-  if (ESPNow_slave.channel != ESPNOW_NO_SLAVE_CHANNEL_FLAG)
+  if (peer.channel != ESPNOW_NO_PEER_CHANNEL_FLAG)
   {
-    esp_err_t delStatus = esp_now_del_peer(ESPNow_slave.peer_addr);
+    esp_err_t delStatus = esp_now_del_peer(peer.peer_addr);
     
     if (writeLogToSerial)
     {
-      USB_SERIAL.print("Slave Delete Status: ");
+      USB_SERIAL.print("Peer Delete Status: ");
       if (delStatus == ESP_OK) 
       {
         // Delete success
