@@ -91,8 +91,9 @@ void sendFullUplinkTelemetryMessage();
 const e_display_brightness ScreenBrightness = BRIGHTEST_DISPLAY;
 const e_uplinkMode uplinkMode = SEND_FULL_UPLINK_MSG;
 bool enableUplinkComms = true;  // can be toggled through UI
-const bool enableTiltCompensation = true;
 const bool enableDigitalCompass = true;
+const bool enableTiltCompensation = false;
+const bool enableSmoothedCompass = true;
 const bool enableHumiditySensor = true;
 const bool enableDepthSensor = true;
 const bool enableIMUSensor = true;
@@ -235,6 +236,7 @@ char locationDisplayLabel[] = "LO";
 char journeyDisplayLabel[] = "JO";
 char showLatLongDisplayLabel[] = "LL";
 char audioTestDisplayLabel[] = "AT";
+char compassCalibrationDisplayLabel[] = "CC";
 char surveyDisplayLabel[] = "SV";
 char thisTargetDisplayLabel[] = "TT";
 char nextWaypointDisplayLabel[] = "NT";
@@ -403,14 +405,15 @@ enum  e_mako_displays
   NAV_COURSE_DISPLAY, 
   LOCATION_DISPLAY, 
   JOURNEY_DISPLAY, 
-  AUDIO_TEST_DISPLAY, 
+  AUDIO_TEST_DISPLAY,
+  COMPASS_CALIBRATION_DISPLAY,
   SHOW_LAT_LONG_DISPLAY_TEMP, 
   NEXT_TARGET_DISPLAY_TEMP, 
   THIS_TARGET_DISPLAY_TEMP,
   AUDIO_ACTION_DISPLAY_TEMP};
   
 const e_mako_displays first_display_rotation = SURVEY_DISPLAY;
-const e_mako_displays last_display_rotation = AUDIO_TEST_DISPLAY;
+const e_mako_displays last_display_rotation = COMPASS_CALIBRATION_DISPLAY;
 
 e_mako_displays display_to_show = first_display_rotation;
 e_mako_displays display_to_revert_to = first_display_rotation;
@@ -472,9 +475,17 @@ const uint8_t GESTURE_INT_PIN = 3;
 template <typename T> struct vector
 {
   T x, y, z;
+  vector<T>(T xx, T yy, T zz) : x(xx),y(yy),z(zz) {}
+  vector<T>() : x(0),y(0),z(0) {}
 };
 
 // Stores min and max magnetometer values from calibration
+
+const double initial_min_mag = 1000;
+const double initial_max_mag = -1000;
+
+vector<double> calib_magnetometer_max;
+vector<double> calib_magnetometer_min;
 vector<double> magnetometer_max;
 vector<double> magnetometer_min;
 vector<double> magnetometer_vector, accelerometer_vector;
@@ -508,14 +519,18 @@ bool imuAvailable = true;
 
 
 // Magnetic Compass averaging and refresh rate control
-const uint8_t s_smoothCompassBufferSize = 20;
-double s_smoothedCompassHeading[s_smoothCompassBufferSize];
+const uint8_t s_smoothedCompassBufferSize = 20;
+double s_smoothedCompassHeading[s_smoothedCompassBufferSize];
 uint8_t s_nextCompassSampleIndex = 0;
-bool s_compassBufferInitialised = false;
-const uint16_t s_compassSampleDelay = 50;
-uint32_t s_lastCompassDisplayRefresh = 0;
-const uint32_t s_compassHeadingUpdateRate = 200; // time between each compass update to screen
-float s_lastDisplayedCompassHeading = 0.0;
+bool s_smoothedCompassBufferInitialised = false;
+volatile float parallelSmoothedCompass = -1.0;    // updated by SmoothedCompass thread
+const uint16_t s_smoothedCompassSampleDelay = 100;
+
+volatile SemaphoreHandle_t xSmoothedCompassMutex = NULL;
+bool smoothedCompassThreadUsingCompass = false;
+
+uint32_t s_lastCompassNotSmoothedDisplayRefresh = 0;
+const uint32_t s_compassNotSmoothedHeadingUpdateRate = 200; // time between each compass update to screen 
 
 uint32_t s_lastTempHumidityDisplayRefresh = 0;
 const uint32_t s_tempHumidityUpdateRate = 1000; // time between each compass update to screen
@@ -543,13 +558,14 @@ uint32_t latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
 uint32_t latestFixTimeStampStreamOk = 0;
 
 // Magnetic heading calculation functions
-template <typename T> double magHeading(vector<T> from);
+template <typename T> double calculateTiltCompensatedHeading(vector<T> from);
 template <typename Ta, typename Tb, typename To> void vector_cross(const vector<Ta> *a, const vector<Tb> *b, vector<To> *out);
 template <typename Ta, typename Tb> float vector_dot(const vector<Ta> *a, const vector<Tb> *b);
 void vector_normalize(vector<double> *a);
 bool getMagHeadingTiltCompensated(double& tiltCompensatedHeading);
 bool getMagHeadingNotTiltCompensated(double& heading);
 bool getSmoothedMagHeading(double& b);
+
 std::string getCardinal(float b);
 //void getTempAndHumidityAHT20(float& h, float& t);
 
@@ -665,18 +681,9 @@ void setup()
   // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/uart.html
   //  uart_set_mode(uart_number, UART_MODE_RS485_HALF_DUPLEX);
 
-  // settings from M5 with no magnets - X arrow on magnetometer pointing in direction of heading.
-  magnetometer_min = (vector<double>) {
-    -51.15, -60.45, 0.00
-  };
-  magnetometer_max = (vector<double>) {
-    53.10, 37.05, 110.25
-  };
-
-  //  if (! Adafruit_TempHumidity.begin()) {
-  //    USB_SERIAL.println("Could not find AHT? Check wiring");
-  //    humidityAvailable=false;
-  //  }
+  // re-calibrated on 28 Jul 2023 with M5 in situ in console
+  magnetometer_min = (vector<double>) { -45, -49.05, 18.15};
+  magnetometer_max = (vector<double>) { 46.5, 31.65, 106.65};
 
   M5.Lcd.setCursor(0, 0);
 
@@ -725,6 +732,23 @@ void setup()
       M5.Lcd.println("LSM303 accelerometer bad");
       compassAvailable = false;
     }
+    
+    if (compassAvailable && enableSmoothedCompass)
+    {
+      smoothedCompassThreadUsingCompass = true;
+      
+      xSmoothedCompassMutex = xSemaphoreCreateMutex();
+
+      TaskHandle_t xsmoothedCompassHandle = NULL;
+
+      xTaskCreate(
+        readSmoothedMagHeading
+        ,  "SmoothedCompass"   // A name just for humans
+        ,  4096  // This stack size can be checked & adjusted by reading the Stack Highwater
+        ,  NULL
+        ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+        ,  &xsmoothedCompassHandle);
+     }
   }
   else
   {
@@ -732,8 +756,6 @@ void setup()
     M5.Lcd.println("LSM303 Accel off");
     compassAvailable = false;
   }
-
-
 
   /*
     if (!Adafruit_GestureSensor.begin())
@@ -1122,11 +1144,10 @@ void refreshAndCalculatePositionalAttributes()
         // Must have travelled min distance and min period elapsed since last waypoint.
         // store the course travelled since last waypoint.
         journey_course = gps.courseTo(journey_lat, journey_lng, Lat, Lng);
-        if (journey_course == 360)
+        if (journey_course >= 359.5) 
           journey_course = 0;
-        journey_distance = distanceTravelled;
 
-        if (journey_course >= 359.5) journey_course = 0;
+        journey_distance = distanceTravelled;
 
         if (journey_distance > 50) journey_distance = 0;    // correct for initial sample
 
@@ -1192,33 +1213,38 @@ void refreshAndCalculatePositionalAttributes()
 
 void acquireAllSensorReadings()
 {        
-  // Don't use smooth, show sample directly every 250 ms
-  //        getSmoothedMagHeading(magnetic_heading);
-  if (millis() > s_lastCompassDisplayRefresh + s_compassHeadingUpdateRate)
+  if (enableSmoothedCompass)
   {
-    s_lastCompassDisplayRefresh = millis();
-
-    if (compassAvailable)
+    magnetic_heading = parallelSmoothedCompass; // updated by SmoothedCompass thread
+  }
+  else
+  {      
+    if (millis() > s_lastCompassNotSmoothedDisplayRefresh + s_compassNotSmoothedHeadingUpdateRate)
     {
-      if (enableTiltCompensation)
+      s_lastCompassNotSmoothedDisplayRefresh = millis();
+  
+      if (compassAvailable)
       {
-        getMagHeadingTiltCompensated(magnetic_heading);
+        if (enableTiltCompensation)
+        {
+          getMagHeadingTiltCompensated(magnetic_heading);
+        }
+        else
+        {
+          getMagHeadingNotTiltCompensated(magnetic_heading);
+        }
       }
       else
       {
-        getMagHeadingNotTiltCompensated(magnetic_heading);
+        magnetic_heading = 0;
       }
     }
-    else
-    {
-      magnetic_heading = 0;
-    }
-
-    getM5ImuSensorData(&imu_gyro_vector.x, &imu_gyro_vector.y, &imu_gyro_vector.z,
-                       &imu_lin_acc_vector.x, &imu_lin_acc_vector.y, &imu_lin_acc_vector.z,
-                       &imu_rot_acc_vector.x, &imu_rot_acc_vector.y, &imu_rot_acc_vector.z,
-                       &imu_temperature);
   }
+
+  getM5ImuSensorData(&imu_gyro_vector.x, &imu_gyro_vector.y, &imu_gyro_vector.z,
+                     &imu_lin_acc_vector.x, &imu_lin_acc_vector.y, &imu_lin_acc_vector.z,
+                     &imu_rot_acc_vector.x, &imu_rot_acc_vector.y, &imu_rot_acc_vector.z,
+                     &imu_temperature);
 
   if (millis() > s_lastTempHumidityDisplayRefresh + s_tempHumidityUpdateRate)
   {
@@ -1339,6 +1365,52 @@ void checkForButtonPresses()
       }
       break;    
     }
+    case COMPASS_CALIBRATION_DISPLAY:
+    {
+      if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
+      {
+        // halt calibration and re-enable SmoothedCompass thread if enabled
+        if (xSmoothedCompassMutex && smoothedCompassThreadUsingCompass == false)
+        {
+          smoothedCompassThreadUsingCompass = true;
+          xSemaphoreGive(xSmoothedCompassMutex);
+        }
+        switchToNextDisplayToShow();
+      }
+
+      if (p_secondButton->wasReleasefor(1000)) // stop calibration
+      {
+        M5.Lcd.print("Saving Calib");
+        // save current max/min vectors to magnetometer_min and magnetometer_max
+        magnetometer_min = calib_magnetometer_min;
+        magnetometer_max = calib_magnetometer_max;
+        
+        // re-enable smoothing compass
+        if (xSmoothedCompassMutex)
+        {
+          smoothedCompassThreadUsingCompass = true;
+          xSemaphoreGive(xSmoothedCompassMutex);
+        }
+
+        delay(10000);
+        switchToNextDisplayToShow();
+      }
+      else if (p_secondButton->wasReleasefor(50)) // start calibration
+      {
+        M5.Lcd.fillScreen(TFT_BLACK);
+        if (xSmoothedCompassMutex && smoothedCompassThreadUsingCompass == true)
+        {
+          const TickType_t waitForMutex = 2000 / portTICK_PERIOD_MS; // 2000ms
+          smoothedCompassThreadUsingCompass = !(xSemaphoreTake(xSmoothedCompassMutex, waitForMutex) == pdTRUE);
+        }
+        
+        // save current max/min vectors to magnetometer_min and magnetometer_max
+        calib_magnetometer_min = vector<double>(initial_min_mag,initial_min_mag,initial_min_mag);
+        calib_magnetometer_max = vector<double>(initial_max_mag,initial_max_mag,initial_max_mag);
+      }
+      
+      break;
+    }
     default:
     {
       if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
@@ -1430,6 +1502,11 @@ void refreshConsoleScreen()
     case AUDIO_TEST_DISPLAY:
     {
       drawAudioTest();
+      break;
+    }
+    case COMPASS_CALIBRATION_DISPLAY:
+    {
+      drawCompassCalibration();
       break;
     }
     case SHOW_LAT_LONG_DISPLAY_TEMP:
@@ -1964,6 +2041,41 @@ void drawJourneyStats()
   M5.Lcd.printf("Uptime:%.1f", ((float)millis() / 1000.0));
 }
 
+void drawCompassCalibration()
+{
+  M5.Lcd.setRotation(0);
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setCursor(0, 0);
+  
+  M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+
+  if (smoothedCompassThreadUsingCompass == false)
+  {
+    M5.Lcd.printf("Calib Start\n           \n");
+
+    sensors_event_t magEvent;
+
+    mag.getEvent(&magEvent);
+  
+    if (magEvent.magnetic.x < calib_magnetometer_min.x) calib_magnetometer_min.x = magEvent.magnetic.x;
+    if (magEvent.magnetic.x > calib_magnetometer_max.x) calib_magnetometer_max.x = magEvent.magnetic.x;
+  
+    if (magEvent.magnetic.y < calib_magnetometer_min.y) calib_magnetometer_min.y = magEvent.magnetic.y;
+    if (magEvent.magnetic.y > calib_magnetometer_max.y) calib_magnetometer_max.y = magEvent.magnetic.y;
+  
+    if (magEvent.magnetic.z < calib_magnetometer_min.z) calib_magnetometer_min.z = magEvent.magnetic.z;
+    if (magEvent.magnetic.z > calib_magnetometer_max.z) calib_magnetometer_max.z = magEvent.magnetic.z;
+    
+    M5.Lcd.printf("x %.3f\n  %.3f\n\n",calib_magnetometer_min.x,calib_magnetometer_max.x);
+    M5.Lcd.printf("y %.3f\n  %.3f\n\n",calib_magnetometer_min.y,calib_magnetometer_max.y);
+    M5.Lcd.printf("z %.3f\n  %.3f\n\n",calib_magnetometer_min.z,calib_magnetometer_max.z);
+  }
+  else
+  {
+    M5.Lcd.printf("Bottom\nbutton\nto start\ncalibration\n\n");    
+  }
+}
+
 void drawAudioTest()
 {
   M5.Lcd.setRotation(1);
@@ -2320,6 +2432,7 @@ void sendUplinkTelemetryMessageV5()
       case JOURNEY_DISPLAY:     displayLabel[0] = journeyDisplayLabel[0]; displayLabel[1] = journeyDisplayLabel[1]; break;
       case SHOW_LAT_LONG_DISPLAY_TEMP: displayLabel[0] = showLatLongDisplayLabel[0]; displayLabel[1] = showLatLongDisplayLabel[1]; break;
       case AUDIO_TEST_DISPLAY:  displayLabel[0] = audioTestDisplayLabel[0]; displayLabel[1] = audioTestDisplayLabel[1]; break;
+      case COMPASS_CALIBRATION_DISPLAY: displayLabel[0] = compassCalibrationDisplayLabel[0]; displayLabel[1] = compassCalibrationDisplayLabel[1]; 
       case SURVEY_DISPLAY:      displayLabel[0] = surveyDisplayLabel[0]; displayLabel[1] = surveyDisplayLabel[1]; break;
       case NEXT_TARGET_DISPLAY_TEMP: displayLabel[0] = nextWaypointDisplayLabel[0]; displayLabel[1] = nextWaypointDisplayLabel[1]; break;
       case THIS_TARGET_DISPLAY_TEMP: displayLabel[0] = thisTargetDisplayLabel[0]; displayLabel[1] = thisTargetDisplayLabel[1]; break;      
@@ -2773,6 +2886,24 @@ void drawGoUnknown(const bool show)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// This runs on a separate thread called SmoothedCompass
+void readSmoothedMagHeading(void *pvParameters)
+{
+  const TickType_t waitForMutex = 500 / portTICK_PERIOD_MS; // 500ms
+
+  while (true)
+  {
+    if (xSemaphoreTake(xSmoothedCompassMutex, waitForMutex) == pdTRUE)
+    {
+      double b=0;
+      getSmoothedMagHeading(b);
+      parallelSmoothedCompass = b;
+      xSemaphoreGive(xSmoothedCompassMutex);
+    }
+  }
+}
+
+// This is called on the SmoothedCompass thread
 bool getSmoothedMagHeading(double& b)
 {
   double magHeading = 0;
@@ -2785,45 +2916,45 @@ bool getSmoothedMagHeading(double& b)
 
   s_smoothedCompassHeading[s_nextCompassSampleIndex] = magHeading;
 
-  s_nextCompassSampleIndex = (s_nextCompassSampleIndex + 1) % s_smoothCompassBufferSize;
+  s_nextCompassSampleIndex = (s_nextCompassSampleIndex + 1) % s_smoothedCompassBufferSize;
 
-  if (!s_compassBufferInitialised)
+  if (!s_smoothedCompassBufferInitialised)
   {
     // populate the entire smoothing buffer before doing any calculations or showing results
     if (s_nextCompassSampleIndex == 0)
-      s_compassBufferInitialised = true;
-    delay(s_compassSampleDelay);          // wait between compass readings 50ms
-    return s_compassBufferInitialised;
+      s_smoothedCompassBufferInitialised = true;
+    delay(s_smoothedCompassSampleDelay);          // wait between compass readings 50ms
+    return s_smoothedCompassBufferInitialised;
   }
 
-  // compute average from s_nextCompassSampleIndex % s_smoothCompassBufferSize to s_nextCompassSampleIndex-1
+  // compute average from s_nextCompassSampleIndex % s_smoothedCompassBufferSize to s_nextCompassSampleIndex-1
   magHeading = 0.0;
 
   bool correctForDiscontinuityAtZero = false;
   bool magHeadingInNWQuadrantFound = false;
   bool magHeadingInNEQuadrantFound = false;
 
-  for (uint8_t index = s_nextCompassSampleIndex; index < s_nextCompassSampleIndex + s_smoothCompassBufferSize; index++)
+  for (uint8_t index = s_nextCompassSampleIndex; index < s_nextCompassSampleIndex + s_smoothedCompassBufferSize; index++)
   {
-    if (s_smoothedCompassHeading[index % s_smoothCompassBufferSize] < 90.0)
+    if (s_smoothedCompassHeading[index % s_smoothedCompassBufferSize] < 90.0)
       magHeadingInNEQuadrantFound = true;
-    else if (s_smoothedCompassHeading[index % s_smoothCompassBufferSize] > 270.0)
+    else if (s_smoothedCompassHeading[index % s_smoothedCompassBufferSize] > 270.0)
       magHeadingInNWQuadrantFound = true;
   }
 
   double offset = (magHeadingInNWQuadrantFound && magHeadingInNEQuadrantFound ? 90.0 : 0.0);
 
   double shifted = 0.0;
-  for (uint8_t index = s_nextCompassSampleIndex; index < s_nextCompassSampleIndex + s_smoothCompassBufferSize; index++)
+  for (uint8_t index = s_nextCompassSampleIndex; index < s_nextCompassSampleIndex + s_smoothedCompassBufferSize; index++)
   {
-    shifted = s_smoothedCompassHeading[index % s_smoothCompassBufferSize] + offset;
+    shifted = s_smoothedCompassHeading[index % s_smoothedCompassBufferSize] + offset;
     if (shifted >= 360.0)
       shifted -= 360.0;
 
     magHeading = magHeading + shifted;
   }
 
-  magHeading = (magHeading / (double)s_smoothCompassBufferSize)  - offset;
+  magHeading = (magHeading / (double)s_smoothedCompassBufferSize)  - offset;
 
   if (magHeading < 0.0)
     magHeading += 360.0;
@@ -2833,9 +2964,8 @@ bool getSmoothedMagHeading(double& b)
 
   b = magHeading;
 
-  return s_compassBufferInitialised;
+  return s_smoothedCompassBufferInitialised;
 }
-
 
 /*
    Returns the angular difference in the horizontal plane between the "from" vector and north, in degrees.
@@ -2848,7 +2978,7 @@ bool getSmoothedMagHeading(double& b)
    into the horizontal plane and the angle between the projected vector
    and horizontal north is returned.
 */
-template <typename T> double magHeading(vector<T> from)
+template <typename T> double calculateTiltCompensatedHeading(vector<T> from)
 {
   sensors_event_t event;
   mag.getEvent(&event);
@@ -2903,7 +3033,7 @@ void vector_normalize(vector<double> *a)
 */
 bool getMagHeadingTiltCompensated(double& tiltCompensatedHeading)
 {
-  double tch = magHeading((vector<int>) {1, 0, 0});
+  double tch = calculateTiltCompensatedHeading((vector<int>) {1, 0, 0});
 
   if (isnan(tch))
   {
@@ -3321,10 +3451,11 @@ void toggleESPNowActive()
       if (success)
       {
         ESPNowActive = true;
-  
-        M5.Lcd.println("ESPNow Enabled");
+
+        M5.Lcd.setRotation(0);
+        M5.Lcd.println("ESPNow\nEnabled");
         if (writeLogToSerial)
-          USB_SERIAL.println("Wifi Disabled\nESPNow Enabled");
+          USB_SERIAL.println("Wifi\nDisabled\nESPNow\nEnabled");
 
         isPairedWithAudioPod = pairWithPeer(ESPNow_audio_pod,"AudioPod");
         
@@ -4123,7 +4254,7 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
 
 bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
 {
-  int maxAttempts = 3;
+  int maxAttempts = 1;
   bool isPaired = false;
   while(maxAttempts-- && !isPaired)
   {
@@ -4133,12 +4264,12 @@ bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
     if (result && peer.channel == ESPNOW_CHANNEL)
     { 
       isPaired = ESPNowManagePeer(peer);
-      M5.Lcd.println("Paired with peer");
+      M5.Lcd.println("Pair ok");
     }
     else
     {
       peer.channel = ESPNOW_NO_PEER_CHANNEL_FLAG;
-      M5.Lcd.println("Not Paired with peer");
+      M5.Lcd.println("Pair fail");
     }
   }
 
