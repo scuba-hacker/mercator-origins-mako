@@ -23,6 +23,8 @@ uint8_t ESPNow_data_to_send = 0;
 
 bool soundsOn = true;
 const uint8_t defaultSilkyVolume = 9;
+const uint8_t minSilkyVolume = 7;
+const uint8_t maxSilkyVolume = 9;
 uint8_t silkyVolume = defaultSilkyVolume;
 
 esp_now_peer_info_t ESPNow_audio_pod;
@@ -519,18 +521,16 @@ bool imuAvailable = true;
 
 
 // Magnetic Compass averaging and refresh rate control
-const uint8_t s_smoothedCompassBufferSize = 20;
+const uint8_t s_smoothedCompassBufferSize = 10;
 double s_smoothedCompassHeading[s_smoothedCompassBufferSize];
 uint8_t s_nextCompassSampleIndex = 0;
 bool s_smoothedCompassBufferInitialised = false;
-volatile float parallelSmoothedCompass = -1.0;    // updated by SmoothedCompass thread
 const uint16_t s_smoothedCompassSampleDelay = 100;
 
-volatile SemaphoreHandle_t xSmoothedCompassMutex = NULL;
-bool smoothedCompassThreadUsingCompass = false;
+bool smoothedCompassCalcInProgress = false;
 
 uint32_t s_lastCompassNotSmoothedDisplayRefresh = 0;
-const uint32_t s_compassNotSmoothedHeadingUpdateRate = 200; // time between each compass update to screen 
+const uint32_t s_compassNotSmoothedHeadingUpdateRate = 150; // time between each compass update to screen 
 
 uint32_t s_lastTempHumidityDisplayRefresh = 0;
 const uint32_t s_tempHumidityUpdateRate = 1000; // time between each compass update to screen
@@ -732,23 +732,11 @@ void setup()
       M5.Lcd.println("LSM303 accelerometer bad");
       compassAvailable = false;
     }
-    
+
     if (compassAvailable && enableSmoothedCompass)
     {
-      smoothedCompassThreadUsingCompass = true;
-      
-      xSmoothedCompassMutex = xSemaphoreCreateMutex();
-
-      TaskHandle_t xsmoothedCompassHandle = NULL;
-
-      xTaskCreate(
-        readSmoothedMagHeading
-        ,  "SmoothedCompass"   // A name just for humans
-        ,  4096  // This stack size can be checked & adjusted by reading the Stack Highwater
-        ,  NULL
-        ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-        ,  &xsmoothedCompassHandle);
-     }
+      smoothedCompassCalcInProgress = true;
+   }
   }
   else
   {
@@ -1213,17 +1201,17 @@ void refreshAndCalculatePositionalAttributes()
 
 void acquireAllSensorReadings()
 {        
-  if (enableSmoothedCompass)
+  if (millis() > s_lastCompassNotSmoothedDisplayRefresh + s_compassNotSmoothedHeadingUpdateRate)
   {
-    magnetic_heading = parallelSmoothedCompass; // updated by SmoothedCompass thread
-  }
-  else
-  {      
-    if (millis() > s_lastCompassNotSmoothedDisplayRefresh + s_compassNotSmoothedHeadingUpdateRate)
+    s_lastCompassNotSmoothedDisplayRefresh = millis();
+
+    if (compassAvailable)
     {
-      s_lastCompassNotSmoothedDisplayRefresh = millis();
-  
-      if (compassAvailable)
+      if (enableSmoothedCompass)
+      {
+        getSmoothedMagHeading(magnetic_heading);
+      }
+      else
       {
         if (enableTiltCompensation)
         {
@@ -1234,17 +1222,12 @@ void acquireAllSensorReadings()
           getMagHeadingNotTiltCompensated(magnetic_heading);
         }
       }
-      else
-      {
-        magnetic_heading = 0;
-      }
+    }
+    else
+    {
+      magnetic_heading = 0;
     }
   }
-
-  getM5ImuSensorData(&imu_gyro_vector.x, &imu_gyro_vector.y, &imu_gyro_vector.z,
-                     &imu_lin_acc_vector.x, &imu_lin_acc_vector.y, &imu_lin_acc_vector.z,
-                     &imu_rot_acc_vector.x, &imu_rot_acc_vector.y, &imu_rot_acc_vector.z,
-                     &imu_temperature);
 
   if (millis() > s_lastTempHumidityDisplayRefresh + s_tempHumidityUpdateRate)
   {
@@ -1252,6 +1235,11 @@ void acquireAllSensorReadings()
     //           getTempAndHumidity(humidity, temperature);
     getTempAndHumidityAndAirPressureBME280(humidity, temperature, air_pressure, pressure_altitude);
     getDepth(depth, water_temperature, water_pressure, depth_altitude);
+
+    getM5ImuSensorData(&imu_gyro_vector.x, &imu_gyro_vector.y, &imu_gyro_vector.z,
+                     &imu_lin_acc_vector.x, &imu_lin_acc_vector.y, &imu_lin_acc_vector.z,
+                     &imu_rot_acc_vector.x, &imu_rot_acc_vector.y, &imu_rot_acc_vector.z,
+                     &imu_temperature);
   }
 }
 
@@ -1369,40 +1357,29 @@ void checkForButtonPresses()
     {
       if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
       {
-        // halt calibration and re-enable SmoothedCompass thread if enabled
-        if (xSmoothedCompassMutex && smoothedCompassThreadUsingCompass == false)
-        {
-          smoothedCompassThreadUsingCompass = true;
-          xSemaphoreGive(xSmoothedCompassMutex);
-        }
+        smoothedCompassCalcInProgress = true;
         switchToNextDisplayToShow();
       }
 
       if (p_secondButton->wasReleasefor(1000)) // stop calibration
       {
-        M5.Lcd.print("Saving Calib");
+        M5.Lcd.print("Saving\nCalibration");
+
         // save current max/min vectors to magnetometer_min and magnetometer_max
         magnetometer_min = calib_magnetometer_min;
         magnetometer_max = calib_magnetometer_max;
         
-        // re-enable smoothing compass
-        if (xSmoothedCompassMutex)
-        {
-          smoothedCompassThreadUsingCompass = true;
-          xSemaphoreGive(xSmoothedCompassMutex);
-        }
-
+        smoothedCompassCalcInProgress = true;
+        
         delay(10000);
         switchToNextDisplayToShow();
       }
       else if (p_secondButton->wasReleasefor(50)) // start calibration
       {
+
         M5.Lcd.fillScreen(TFT_BLACK);
-        if (xSmoothedCompassMutex && smoothedCompassThreadUsingCompass == true)
-        {
-          const TickType_t waitForMutex = 2000 / portTICK_PERIOD_MS; // 2000ms
-          smoothedCompassThreadUsingCompass = !(xSemaphoreTake(xSmoothedCompassMutex, waitForMutex) == pdTRUE);
-        }
+
+        smoothedCompassCalcInProgress = false;
         
         // save current max/min vectors to magnetometer_min and magnetometer_max
         calib_magnetometer_min = vector<double>(initial_min_mag,initial_min_mag,initial_min_mag);
@@ -2049,7 +2026,7 @@ void drawCompassCalibration()
   
   M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
 
-  if (smoothedCompassThreadUsingCompass == false)
+  if (smoothedCompassCalcInProgress == false)
   {
     M5.Lcd.printf("Calib Start\n           \n");
 
@@ -2886,27 +2863,9 @@ void drawGoUnknown(const bool show)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// This runs on a separate thread called SmoothedCompass
-void readSmoothedMagHeading(void *pvParameters)
+bool getSmoothedMagHeading(double& magHeading)
 {
-  const TickType_t waitForMutex = 500 / portTICK_PERIOD_MS; // 500ms
-
-  while (true)
-  {
-    if (xSemaphoreTake(xSmoothedCompassMutex, waitForMutex) == pdTRUE)
-    {
-      double b=0;
-      getSmoothedMagHeading(b);
-      parallelSmoothedCompass = b;
-      xSemaphoreGive(xSmoothedCompassMutex);
-    }
-  }
-}
-
-// This is called on the SmoothedCompass thread
-bool getSmoothedMagHeading(double& b)
-{
-  double magHeading = 0;
+  magHeading = 0;
 
   if (getMagHeadingTiltCompensated(magHeading) == false)
   {
@@ -2923,7 +2882,6 @@ bool getSmoothedMagHeading(double& b)
     // populate the entire smoothing buffer before doing any calculations or showing results
     if (s_nextCompassSampleIndex == 0)
       s_smoothedCompassBufferInitialised = true;
-    delay(s_smoothedCompassSampleDelay);          // wait between compass readings 50ms
     return s_smoothedCompassBufferInitialised;
   }
 
@@ -2961,8 +2919,6 @@ bool getSmoothedMagHeading(double& b)
 
   if (magHeading >= 359.5)
     magHeading = 0.0;
-
-  b = magHeading;
 
   return s_smoothedCompassBufferInitialised;
 }
@@ -3360,8 +3316,8 @@ void publishToSilkyCycleVolumeUp()
 {
   if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
   {
-    if (silkyVolume == 9)
-      silkyVolume = 1;
+    if (silkyVolume == maxSilkyVolume)
+      silkyVolume = minSilkyVolume;
     else
       silkyVolume++;
       
