@@ -270,28 +270,30 @@ class navigationWaypoint
     }
 };
 
-const uint8_t waypointCount = 17;
+const uint8_t waypointCount = 14;
 const uint8_t waypointExit = 0;
 
+// TBC means location to be confirmed by navigating to the feature on another dive
+// ^ means confirmed feature location
 navigationWaypoint diveOneWaypoints[waypointCount] =
 {
-  [0] =  { ._label = "Mid\nJetty\n(TBC)", ._lat = 51.459547, ._long = -0.547461},  // from Bing or google - TBC
-  [1] =  { ._label = "Search\nLight\nBoat\n(TBC)", ._lat = 51.459919, ._long = -0.547681},  // Lady of Kent, from Neo-6M - Dive 2 on 21 July -  TBC
-  [2] =  { ._label = "Cement\nMixer\n(TBC)", ._lat = 51.460038, ._long = -0.547882},  // from Neo-6M - Dive 2 on 21 July - TBC
-  [3] =  { ._label = "Tyre\n(TBC)", ._lat = 51.460053, ._long = -0.548184},  // from Neo-6M Dive 2 on 21 July - TBC
-  [4] =  { ._label = "Cafe\nJetty\n(TBC)", ._lat = 51.460015, ._long = -0.548316},    // from Bing or google - jetty near dive centre - TBC
-  [5] =  { ._label = "Container\nRusty\n8m(TBC)", ._lat = 51.460192, ._long = -0.548283},  // from Neo-6M Dive 2 on 21 July - TBC
+  [0] =  { ._label = "Mid\nJetty^\n", ._lat = 51.459547, ._long = -0.547461},  // from Bing or google - TBC
+  [1] =  { ._label = "Search\nLight\nBoat^\n", ._lat = 51.459919, ._long = -0.547681},  // Lady of Kent, from Neo-6M - Dive 2 on 21 July -  TBC
+  [2] =  { ._label = "Cement\nMixer^\n", ._lat = 51.460038, ._long = -0.547882},  // from Neo-6M - Dive 2 on 21 July - TBC
+  [3] =  { ._label = "Tyre^\n", ._lat = 51.460053, ._long = -0.548184},  // from Neo-6M Dive 2 on 21 July - TBC
+  [4] =  { ._label = "Cafe\nJetty^\n", ._lat = 51.460015, ._long = -0.548316},    // from Bing or google - jetty near dive centre - TBC
+  [5] =  { ._label = "Container\nRusty^\n8m", ._lat = 51.460192, ._long = -0.548283},  // from Neo-6M Dive 2 on 21 July - TBC
   [6] =  { ._label = "Bus^", ._lat = 51.460073, ._long = -0.548515},        // Got from Bing, confirmed with Neo-6M
   [7] =  { ._label = "Confined\nArea\n(TBC)", ._lat = 51.459999, ._long = -0.548590}, // Got from Google Maps - TBC
   [8] =  { ._label = "Container\nNear\nBus\n2.5m^", ._lat = 51.460014, ._long = -0.548735},  // Got from Bing, confirmed with Neo-6M
   [9] =  { ._label = "Unknown 1\n(TBC)", ._lat = 51.460069, ._long = -0.548567},  // from Neo-6M Dive 2 on 21 July - TBC
   [10] = { ._label = "Unknown 2\n(TBC)", ._lat = 51.460130, ._long = -0.548850},  // from Neo-6M Dive 2 on 21 July - TBC
-  [11] = { ._label = "Reliant\nScimatar\nCar\n(TBC)", ._lat = 51.46016, ._long = -0.54873},  // Got from Dive 2 21-07-2023 with Neo-6M, TBC
-  [12] = { ._label = "Caves\n7m(TBC M5)", ._lat = 51.460725, ._long = -0.548896},  // Got from Dive 1 21-07-2023 with M5, TBC
-  [13] = { ._label = "Multi\nBoat\nWrecks\n(TBC M5)", ._lat = 51.460843, ._long = -0.548369},  // Got from Dive 1 21-07-2023 with M5, TBC
-  [14] = { ._label = "Mystery?\nPlane?\n(TBC)", ._lat = 51.459745, ._long = -0.546649},   // Got from bing  - plane? - TBC
-  [15] = { ._label = "Old\nJetty\n(TBC)",  ._lat = 51.459280, ._long = -0.547084},  // from Bing or google - TBC
-  [16] = { ._label = "The\nGaff", ._lat = 51.391231, ._long = -0.287616}
+// fail M5 GPS  [11] = { ._label = "Reliant\nScimatar\nCar\n(TBC)", ._lat = 51.46016, ._long = -0.54873},  // Got from Dive 2 21-07-2023 with Neo-6M, TBC
+// fail M5 GPS  [12] = { ._label = "Caves\n7m(TBC M5)", ._lat = 51.460725, ._long = -0.548896},  // Got from Dive 1 21-07-2023 with M5, TBC
+// fail M5 GPS  [13] = { ._label = "Multi\nBoat\nWrecks\n(TBC M5)", ._lat = 51.460843, ._long = -0.548369},  // Got from Dive 1 21-07-2023 with M5, TBC
+  [11] = { ._label = "Plane^\n", ._lat = 51.459745, ._long = -0.546649},   // Got from bing  - plane
+  [12] = { ._label = "Old\nJetty\n(TBC)",  ._lat = 51.459280, ._long = -0.547084},  // from Bing or google - TBC
+  [13] = { ._label = "The\nGaff", ._lat = 51.391231, ._long = -0.287616}
 };
 
 /*
