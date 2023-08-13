@@ -269,7 +269,7 @@ class navigationWaypoint
     {
     }
 };
-
+/*
 const uint8_t waypointCount = 14;
 const uint8_t waypointExit = 0;
 
@@ -295,6 +295,43 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
   [12] = { ._label = "Old\nJetty\n(TBC)",  ._lat = 51.459280, ._long = -0.547084},  // from Bing or google - TBC
   [13] = { ._label = "The\nGaff", ._lat = 51.391231, ._long = -0.287616}
 };
+
+*/
+
+
+
+/*
+// dives on 1st August Solo
+
+const uint8_t waypointCount = 22;
+const uint8_t waypointExit = 0;
+
+navigationWaypoint diveOneWaypoints[waypointCount] =
+{
+  [0] =  { ._label = "-0Mid\nJetty^\n", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "--Old\nJetty\n(TBC)",  ._lat = 51.459280, ._long = -0.547084},
+  [2] = { ._label = "17a-near pipe", ._lat = 51.459142, ._long = -0.5460264},
+  [3] = { ._label = "10b-pipe mid?", ._lat = 51.4591603333333, ._long = -0.545986222222222},
+  [4] = { ._label = "09c-pipe?", ._lat = 51.4591611666667, ._long = -0.545925166666667},
+  [5] = { ._label = "18d-near pipe", ._lat = 51.4591311666667, ._long = -0.545924333333333},
+  [6] = { ._label = "16e-north of pipe?",  ._lat = 51.4591815, ._long = -0.545989333333333},
+  [7] = { ._label = "18d-near pipe", ._lat = 51.4591311666667, ._long = -0.545924333333333},
+  [8] = { ._label = "16e-north of pipe?",  ._lat = 51.4591815, ._long = -0.545989333333333},
+  [9] = { ._label = "15f-orka van?", ._lat = 51.4592124,._long = -0.5458994},
+  [10] = { ._label = "08g-plane^", ._lat = 51.459753,._long = -0.546650142857143},
+  [11] = { ._label = "07h-taxi^", ._lat = 51.459729, ._long = -0.546992857142857},
+  [12] = { ._label = "-01i-DayBoat", ._lat = 51.459799, ._long = -0.547376555555556},
+  [13] = { ._label = "-06j-middle?", ._lat = 51.4601315714286, ._long = -0.547417857142857},
+  [14] = { ._label = "-14k-far side mid jetty", ._lat = 51.4602073333333, ._long = -0.546787666666667},
+  [15] = { ._label = "-03l-nr bus?", ._lat = 51.4600835714286, ._long = -0.548664428571429},
+  [16] = { ._label = "02m-nr bus?", ._lat = 51.4600555714286, ._long = -0.548741571428571},
+  [17] = { ._label = "11n-nr bus?", ._lat = 51.4600452, ._long = -0.5488188},
+  [18] = { ._label = "04o-way to caves?", ._lat = 51.4601345714286, ._long = -0.548862428571429},
+  [19] = { ._label = "12p-way to caves?", ._lat = 51.460347, ._long = -0.5489195},
+  [20] = { ._label = "13q-cavebike?",  ._lat = 51.460893, ._long = -0.548704666666667},
+  [21] = { ._label = "05r-cave?", ._lat = 51.460947625, ._long = -0.54878325}
+};
+*/
 
 /*
 const uint8_t waypointCount = 20;
@@ -352,7 +389,90 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
 };
 */
 
-navigationWaypoint* nextWaypoint = diveOneWaypoints;
+
+const uint8_t waypointCountDiveOne = 24;
+const uint8_t waypointExitDiveOne = 23;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+  [0] = { ._label = "*1 Mid Jetty ", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "a P31 6m", ._lat = 51.459766, ._long = -0.547347},
+  [2] = { ._label = "b B38 Lifeboat 6.5m", ._lat = 51.4598136301389, ._long = -0.546991890449386},
+  [3] = { ._label = "c B45 List Sharon 7.5m", ._lat = 51.4598098699702, ._long = -0.54670373432756},
+  [4] = { ._label = "d 46 Plane", ._lat = 51.459745, ._long = -0.546649},
+  [5] = { ._label = "e B49 Claymore 6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [6] = { ._label = "f P47 6m", ._lat = 51.459399, ._long = -0.546594},
+  [7] = { ._label = "g P42 6m", ._lat = 51.459491, ._long = -0.546867},
+  [8] = { ._label = "h P36 6m", ._lat = 51.459555, ._long = -0.54708},
+  [9] = { ._label = "i P32 6m", ._lat = 51.459658, ._long = -0.54725},
+  [10] = { ._label = "j B29 Spike Boat 7m", ._lat = 51.4601315714286, ._long = -0.547417857142857},
+  [11] = { ._label = "k Thorpe Boat 5.5m", ._lat = 51.4602073333333, ._long = -0.546787666666667},
+  [12] = { ._label = "l P34 6m", ._lat = 51.460312, ._long = -0.547165},
+  [13] = { ._label = "m My Wrecks 4m", ._lat = 51.46043825, ._long = -0.547208},
+  [14] = { ._label = "n B27 Wrecks 6m", ._lat = 51.4604300973436, ._long = -0.547383365365033},
+  [15] = { ._label = "o P28 6m", ._lat = 51.4602436, ._long = -0.5474192},
+  [16] = { ._label = "p B21 StickUp Boat 5m", ._lat = 51.4602514070597, ._long = -0.54789158281982},
+  [17] = { ._label = "q P16 Portacabin 5m", ._lat = 51.46034, ._long = -0.548173},
+  [18] = { ._label = "r B13 White Boat 7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [19] = { ._label = "s P14 Cargo 8m", ._lat = 51.460288, ._long = -0.548292},
+  [20] = { ._label = "t P9 6m", ._lat = 51.460154, ._long = -0.548687},
+  [21] = { ._label = "u Bus 2m", ._lat = 51.460073, ._long = -0.548515},
+  [22] = { ._label = "v P17 2m", ._lat = 51.459956, ._long = -0.54808},
+  [23] = { ._label = "*1w Cafe Jetty ", ._lat = 51.460015, ._long = -0.548316}
+};
+
+const uint8_t waypointCountDiveTwo = 22;
+const uint8_t waypointExitDiveTwo = 21;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "*2 Cafe Jetty ", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "a 10 Bus", ._lat = 51.460073, ._long = -0.548515},
+  [2] = { ._label = "b P7 Cargo 2.5m", ._lat = 51.460014, ._long = -0.548735},
+  [3] = { ._label = "c ?4 Spitfire 315d", ._lat = 0, ._long = 0},
+  [4] = { ._label = "d 3 Scimitar", ._lat = 51.460347, ._long = -0.5489195},
+  [5] = { ._label = "e ?5 Lightning 5.5m 12d", ._lat = 0, ._long = 0},
+  [6] = { ._label = "f 13 White Boat 7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [7] = { ._label = "g P16 Portacab 8m", ._lat = 51.46034, ._long = -0.548173},
+  [8] = { ._label = "h 21 StickUp Boat", ._lat = 51.4602514070597,  ._long = -0.54789158281982},
+  [9] = { ._label = "i ?19 Chick Hutch 327d", ._lat = 0, ._long = 0},
+  [10] = { ._label = "j 21 StickUp Boat", ._lat = 51.4602514070597, ._long = -0.54789158281982},
+  [11] = { ._label = "k ?18 Milk Float 242d", ._lat = 0, ._long = 0},
+  [12] = { ._label = "l 21 StickUp Boat", ._lat = 51.4602514070597, ._long = -0.54789158281982},
+  [13] = { ._label = "m ?23 Traf Light 143d", ._lat = 0, ._long = 0},
+  [14] = { ._label = "n 22 Lady of Kent 5m", ._lat = 51.4599185714286, ._long = -0.547681},
+  [15] = { ._label = "o ?20 Sweet Bowl 311d", ._lat = 0, ._long = 0},
+  [16] = { ._label = "p 29 Spike Boat 7m", ._lat = 51.4601315714286, ._long = -0.547417857142857},
+  [17] = { ._label = "q ?35 Dragon Boat 131d", ._lat = 0, ._long = 0},
+  [18] = { ._label = "r ?40 RIB 42d", ._lat = 0, ._long = 0},
+  [19] = { ._label = "s 27 Wrecks 6m", ._lat = 51.4604300973436, ._long = -0.547383365365033},
+  [20] = { ._label = "t ?24 Die Hard 338d", ._lat = 0, ._long = 0},
+  [21] = { ._label = "*2u Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
+};
+
+const uint8_t* p_currentDiveWaypointCount = NULL;
+const uint8_t* p_currentDiveWaypointExit = NULL;
+navigationWaypoint* currentDiveWaypoints = NULL;
+
+navigationWaypoint* nextWaypoint = NULL;
+
+void switchDivePlan()
+{
+  if (p_currentDiveWaypointCount == NULL || p_currentDiveWaypointCount == &waypointCountDiveTwo)
+  {
+    p_currentDiveWaypointCount = &waypointCountDiveOne;
+    p_currentDiveWaypointExit = &waypointExitDiveOne;
+    currentDiveWaypoints = diveOneWaypoints;
+    nextWaypoint = currentDiveWaypoints;
+  }
+  else
+  {
+    p_currentDiveWaypointCount = &waypointCountDiveTwo;
+    p_currentDiveWaypointExit = &waypointExitDiveTwo;
+    currentDiveWaypoints = diveTwoWaypoints;
+    nextWaypoint = currentDiveWaypoints;
+  }
+}
 
 enum e_way_marker {BLACKOUT_MARKER, GO_ANTICLOCKWISE_MARKER, GO_AHEAD_MARKER, GO_CLOCKWISE_MARKER, GO_TURN_AROUND_MARKER, UNKNOWN_MARKER};
 enum e_direction_metric {JOURNEY_COURSE, COMPASS_HEADING};
@@ -625,6 +745,8 @@ void updateButtonsAndBuzzer()
 void setup()
 {
   M5.begin();
+
+  switchDivePlan();   // initialise to dive one
 
   pinMode(IR_LED_GPS_TX_PIN, OUTPUT);
   digitalWrite(IR_LED_GPS_TX_PIN, HIGH); // switch off
@@ -1392,7 +1514,17 @@ void checkForButtonPresses()
     }
     default:
     {
-      if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
+      if (p_primaryButton->wasReleasefor(10000)) // Nav Screens - switch to alternative dive plan
+      {
+        switchDivePlan();
+        M5.Lcd.fillScreen(TFT_BLACK);
+        delay(300);
+        M5.Lcd.fillScreen(TFT_ORANGE);
+        delay(300);
+        M5.Lcd.fillScreen(TFT_BLACK);
+        goto show_current_target;
+      }
+      else if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
       {
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration;
         display_to_revert_to = display_to_show;
@@ -1414,7 +1546,7 @@ void checkForButtonPresses()
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
 
         // goto dive exit (the last target on the list)
-        nextWaypoint = diveOneWaypoints + waypointExit;
+        nextWaypoint = currentDiveWaypoints + *p_currentDiveWaypointExit;
 
         display_to_revert_to = display_to_show;
         display_to_show = NEXT_TARGET_DISPLAY_TEMP;
@@ -1425,8 +1557,8 @@ void checkForButtonPresses()
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
         // head to next target, if at end of target list go to the top of the list
 
-        if (++nextWaypoint == diveOneWaypoints + waypointCount)
-          nextWaypoint = diveOneWaypoints;
+        if (++nextWaypoint == currentDiveWaypoints + *p_currentDiveWaypointCount)
+          nextWaypoint = currentDiveWaypoints;
           
         display_to_revert_to = display_to_show;
         display_to_show = NEXT_TARGET_DISPLAY_TEMP;
@@ -1434,6 +1566,7 @@ void checkForButtonPresses()
       }
       else if (p_secondButton->wasReleasefor(50))      // Nav Screens: remind diver of current target
       {
+        show_current_target:
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration  / 3;
 
         // don't change target - remind diver of current target
@@ -1829,7 +1962,7 @@ void drawNextTarget()
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
   M5.Lcd.setCursor(0, 5);
 
-  M5.Lcd.printf ("Next:\n\n(%i)\n\n%s", nextWaypoint-diveOneWaypoints+1, nextWaypoint->_label);
+  M5.Lcd.printf ("Next:\n\n(%i)\n\n%s", nextWaypoint-currentDiveWaypoints+1, nextWaypoint->_label);
 
   if (millis() > showTempDisplayEndTime)
   {
@@ -1846,7 +1979,7 @@ void drawThisTarget()
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
   M5.Lcd.setCursor(0, 5);
 
-  M5.Lcd.printf ("Towards\n\n(%i)\n\n%s", nextWaypoint-diveOneWaypoints+1, nextWaypoint->_label);
+  M5.Lcd.printf ("Towards\n\n(%i)\n\n%s", nextWaypoint-currentDiveWaypoints+1, nextWaypoint->_label);
 
   if (millis() > showTempDisplayEndTime)
   {
@@ -1990,7 +2123,7 @@ void drawLocationStats()
   }
 
   M5.Lcd.setCursor(5, 68);
-  M5.Lcd.printf("T: (%d)\n%s", (int)(nextWaypoint - diveOneWaypoints)+1, nextWaypoint->_label);
+  M5.Lcd.printf("T: (%d)\n%s", (int)(nextWaypoint - currentDiveWaypoints)+1, nextWaypoint->_label);
 }
 
 void drawJourneyStats()
