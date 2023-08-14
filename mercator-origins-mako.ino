@@ -251,10 +251,9 @@ bool     recordSurveyHighlight = false;
 
 class navigationWaypoint
 {
-    static const uint8_t maxLabelLength = 24;
+//    static const uint8_t maxLabelLength = 24;
 
   public:
-
     char*  _label;
     double _lat;
     double _long;
@@ -389,7 +388,9 @@ navigationWaypoint diveOneWaypoints[waypointCount] =
 };
 */
 
-
+/*
+ * August 10th Dives 1 and 2
+ * 
 const uint8_t waypointCountDiveOne = 24;
 const uint8_t waypointExitDiveOne = 23;
 
@@ -448,6 +449,67 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
   [19] = { ._label = "s 27 Wrecks 6m", ._lat = 51.4604300973436, ._long = -0.547383365365033},
   [20] = { ._label = "t ?24 Die Hard 338d", ._lat = 0, ._long = 0},
   [21] = { ._label = "*2u Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
+};
+*/
+
+/*
+ * Week of 14 August Dives 1 and 2
+ * 
+*/
+ 
+
+const uint8_t waypointCountDiveOne = 22;
+const uint8_t waypointExitDiveOne = 21;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+  [0] = { ._label = "*1 Mid Jetty", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "a 34P Cargo 6m", ._lat = 51.460312, ._long = -0.547165},
+  [2] = { ._label = "b ?40N RIB 6m 125d", ._lat = 51, ._long = 1},
+  [3] = { ._label = "c ?43N Orange Boat 5.5m 80d", ._lat = 51, ._long = 1},
+  [4] = { ._label = "d X08 Thorpe Boat 5.5m", ._lat = 51.4602073333333, ._long = -0.546787666666667},
+  [5] = { ._label = "e 28P 6m", ._lat = 51.4602455, ._long = -0.547421},
+  [6] = { ._label = "f 22B Lady Kent 5m", ._lat = 51.4599185714286, ._long = -0.547681},
+  [7] = { ._label = "g ?25N Boat hole 70d close", ._lat = 51, ._long = 1},
+  [8] = { ._label = "h 22B Lady Kent 5m", ._lat = 51.4599185714286, ._long = -0.547681},
+  [9] = { ._label = "i ?20N Sweets 311d", ._lat = 51, ._long = 1},
+  [10] = { ._label = "j 32B Sticky Up Boat", ._lat = 51.4602514070597, ._long = -0.54789158281982},
+  [11] = { ._label = "k ?23N TLights 7m 143d", ._lat = 51, ._long = 1},
+  [12] = { ._label = "l 17P 2m", ._lat = 51.4599656, ._long = -0.5480939},
+  [13] = { ._label = "m 14P 8m", ._lat = 51.4602986, ._long = -0.5483127},
+  [14] = { ._label = "n 3N Scimatar 5.5m", ._lat = 51.460347, ._long = -0.5489195},
+  [15] = { ._label = "o ?5N Lightning 5.5m 12d", ._lat = 51, ._long = 1},
+  [16] = { ._label = "p 06an Caves", ._lat = 51.460947625, ._long = -0.54878325},
+  [17] = { ._label = "q ?2N Sub 4m 300d", ._lat = 51, ._long = 1},
+  [18] = { ._label = "r ?1N Canoe 3m 7d", ._lat = 51, ._long = 1},
+  [19] = { ._label = "s ?12N Commer Van 6m 340d", ._lat = 51, ._long = 1},
+  [20] = { ._label = "t 13B White Boat 7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [21] = { ._label = "*1z Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
+};
+
+const uint8_t waypointCountDiveTwo = 18;
+const uint8_t waypointExitDiveTwo = 21;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "*2 Mid Jetty", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "a X08 Thorpe Boat 5.5m", ._lat = 51.4602073333333, ._long = -0.546787666666667},
+  [2] = { ._label = "b Find Rib 6m & Orange Boat 5.5m", ._lat = 51, ._long = 1},
+  [3] = { ._label = "c 35N Dragon Boat", ._lat = 51.4599636666667, ._long = -0.547154333333333},
+  [4] = { ._label = "d 45B Listing Sharon", ._lat = 51.4598098699702, ._long = -0.54670373432756},
+  [5] = { ._label = "e 38B Lifeboat", ._lat = 51.4598136301389, ._long = -0.546991890449386},
+  [6] = { ._label = "f X05 4 crates", ._lat = 51.4599018571429, ._long = -0.547141285714286},
+  [7] = { ._label = "g X04 Metal Grated Box", ._lat = 51.4599582857143, ._long = -0.547648571428571},
+  [8] = { ._label = "h X14 Cement Mixer", ._lat = 51.4600375, ._long = -0.5478815},
+  [9] = { ._label = "i X03 Cement Mixer & Wheel", ._lat = 51.46020025, ._long = -0.5479775},
+  [10] = { ._label = "j 18N Milk Float", ._lat = 51.4601745714286, ._long = -0.548058571428571},
+  [11] = { ._label = "k X15 Tyre", ._lat = 51.4600531428571, ._long = -0.548183857142857},
+  [12] = { ._label = "l X10 Pot in a box", ._lat = 51.459940625, ._long = -0.54852025},
+  [13] = { ._label = "m X11 Seahorse Midwater", ._lat = 51.4600703333333, ._long = -0.548645666666667},
+  [14] = { ._label = "n X01 Dinghy Boat", ._lat = 51.4601285, ._long = -0.5488505},
+  [15] = { ._label = "o 09P Dance Platform", ._lat = 51.460154, ._long = -0.548687},
+  [16] = { ._label = "p 10N Bus", ._lat = 51.460073, ._long = -0.548515},
+  [17] = { ._label = "*2z Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
 };
 
 const uint8_t* p_currentDiveWaypointCount = NULL;
