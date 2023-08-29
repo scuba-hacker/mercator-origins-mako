@@ -22,9 +22,9 @@ uint16_t ESPNowMessagesFailedToDeliver = 0;
 uint8_t ESPNow_data_to_send = 0;
 
 bool soundsOn = true;
-const uint8_t defaultSilkyVolume = 9;
-const uint8_t minSilkyVolume = 7;
-const uint8_t maxSilkyVolume = 9;
+const uint8_t defaultSilkyVolume = 5;     // no software gain applied - best for sounds recorded at optimal amplitude.
+const uint8_t minSilkyVolume = 1;         // quietest
+const uint8_t maxSilkyVolume = 5;
 uint8_t silkyVolume = defaultSilkyVolume;
 
 esp_now_peer_info_t ESPNow_audio_pod;
@@ -33,7 +33,9 @@ const int RESET_ESPNOW_SEND_RESULT = 0xFF;
 esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
 
 
-enum e_audio_action {AUDIO_ACTION_NONE, AUDIO_ACTION_NEXT_SOUND, AUDIO_ACTION_CYCLE_VOLUME, AUDIO_ACTION_SOUNDS_TOGGLE, AUDIO_ACTION_PLAYBACK_TOGGLE, AUDIO_ACTION_STOP_PLAYBACK, AUDIO_ACTION_SET_VOLUME};
+enum e_audio_action {AUDIO_ACTION_NONE, AUDIO_ACTION_NEXT_SOUND, AUDIO_ACTION_CYCLE_VOLUME, AUDIO_ACTION_SOUNDS_TOGGLE, 
+AUDIO_ACTION_PLAYBACK_TOGGLE, AUDIO_ACTION_STOP_PLAYBACK, AUDIO_ACTION_SET_VOLUME, AUDIO_ACTION_ROTATE_SOUND_SET};
+
 e_audio_action audioAction = AUDIO_ACTION_NONE;
 
 const uint8_t ESPNOW_CHANNEL = 1;
@@ -47,13 +49,69 @@ const uint8_t SILKY_ESPNOW_COMMAND_NEXT_TRACK = (uint8_t)'C';   // 5000 ms
 const uint8_t SILKY_ESPNOW_COMMAND_STOP_PLAYBACK = (uint8_t)'D';   // 10000 ms
 const uint8_t SILKY_ESPNOW_COMMAND_SET_VOLUME = (uint8_t)'E';
 
-enum e_soundFX {SFX_BASS='0', SFX_HARPLOW='1',SFX_HARPRASP='2',SFX_HIPITCH='3',SFX_KEYCLICK='4',SFX_MEDBUZZ='5',SFX_POP='6'};
+enum e_soundFX {SFX_PIANO_AHEAD='0', SFX_PIANO_BEHIND='1',SFX_PIANO_LEFT='2',SFX_PIANO_RIGHT='3',
+                SFX_ORGAN_AHEAD='4', SFX_ORGAN_BEHIND='5',SFX_ORGAN_LEFT='6',SFX_ORGAN_RIGHT='7',
+                SFX_PAD_AHEAD='8', SFX_PAD_BEHIND='9',SFX_PAD_LEFT=':',SFX_PAD_RIGHT=';',SFX_NONE='_'};
 
-const e_soundFX SFX_AHEAD = SFX_POP;
-const e_soundFX SFX_TURN_AROUND = SFX_KEYCLICK;
-const e_soundFX SFX_CLOCKWISE = SFX_HARPLOW;
-const e_soundFX SFX_ANTICLOCKWISE = SFX_HARPRASP;
-const e_soundFX SFX_UNKNOWN = SFX_MEDBUZZ;
+e_soundFX SFX_AHEAD = SFX_PIANO_AHEAD;
+e_soundFX SFX_TURN_AROUND = SFX_PIANO_BEHIND;
+e_soundFX SFX_ANTICLOCKWISE = SFX_PIANO_LEFT;
+e_soundFX SFX_CLOCKWISE = SFX_PIANO_RIGHT;
+e_soundFX SFX_UNKNOWN = SFX_NONE;
+
+const char *soundSets[] = {"Piano Sounds", "Organ Sounds", "Pad Sounds","No Sounds",""};
+const char** currentSoundSet = soundSets;
+
+void rotateToNextGuidanceSounds()
+{
+  switch(SFX_AHEAD)
+  {
+    case SFX_PIANO_AHEAD:
+    {
+      SFX_AHEAD = SFX_ORGAN_AHEAD;
+      SFX_TURN_AROUND = SFX_ORGAN_BEHIND;
+      SFX_ANTICLOCKWISE = SFX_ORGAN_LEFT;
+      SFX_CLOCKWISE = SFX_ORGAN_RIGHT;
+      break;
+    }
+    case SFX_ORGAN_AHEAD:
+    {
+      SFX_AHEAD = SFX_PAD_AHEAD;
+      SFX_TURN_AROUND = SFX_PAD_BEHIND;
+      SFX_ANTICLOCKWISE = SFX_PAD_LEFT;
+      SFX_CLOCKWISE = SFX_PAD_RIGHT;
+      break;
+    }
+    case SFX_PAD_AHEAD:
+    {
+      SFX_AHEAD = SFX_NONE;
+      SFX_TURN_AROUND = SFX_NONE;
+      SFX_ANTICLOCKWISE = SFX_NONE;
+      SFX_CLOCKWISE = SFX_NONE;
+      break;
+    }
+    case SFX_NONE:
+    {
+      SFX_AHEAD = SFX_PIANO_AHEAD;
+      SFX_TURN_AROUND = SFX_PIANO_BEHIND;
+      SFX_ANTICLOCKWISE = SFX_PIANO_LEFT;
+      SFX_CLOCKWISE = SFX_PIANO_RIGHT;
+      break;
+    }
+    default:
+    {
+      SFX_AHEAD = SFX_NONE;
+      SFX_TURN_AROUND = SFX_NONE;
+      SFX_ANTICLOCKWISE = SFX_NONE;
+      SFX_CLOCKWISE = SFX_NONE;
+    }
+  }
+  
+  if (**(++currentSoundSet) == NULL)
+    currentSoundSet = soundSets;
+  
+  audioAction = AUDIO_ACTION_ROTATE_SOUND_SET;
+}
 
 #include "tb_display.h"
 
@@ -80,12 +138,10 @@ const int SCREEN_WIDTH = 135;
 const int UPLINK_BAUD_RATE = 9600;
 
 enum e_display_brightness {OFF_DISPLAY = 7, DIM_DISPLAY = 8, HALF_BRIGHT_DISPLAY = 10, BRIGHTEST_DISPLAY = 14};
-enum e_uplinkMode {SEND_NO_UPLINK_MSG, SEND_TEST_UPLINK_MSG, SEND_BASIC_UPLINK_MSG, SEND_BASIC_WITH_DEPTH_UPLINK_MSG, SEND_FULL_UPLINK_MSG};
+enum e_uplinkMode {SEND_NO_UPLINK_MSG, SEND_TEST_UPLINK_MSG, SEND_FULL_UPLINK_MSG};
 
 void sendNoUplinkTelemetryMessages();
 void sendUplinkTestMessage();
-void sendBasicUplinkTelemetryMessage();
-void sendBasicWithDepthUplinkTelemetryMessage();
 void sendFullUplinkTelemetryMessage();
 
 // feature switches
@@ -110,6 +166,9 @@ bool enableESPNowAtStartup = true;  // set to true only if no wifi at startup
 bool otaActiveListening = false; // OTA updates toggle
 bool otaFirstInit = false;       // Start OTA at boot if WiFi enabled
 
+uint16_t sensor_acquisition_time = 0;
+uint16_t max_sensor_acquisition_time = 0;
+
 bool enableESPNow = true;       //
 bool ESPNowActive = false;       // will be set to true on startup if set above - can be toggled through interface.
 
@@ -125,9 +184,7 @@ void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 
 void (*fp_sendUplinkMessage)() =  ( uplinkMode == SEND_NO_UPLINK_MSG ? &sendNoUplinkTelemetryMessages :
                                   ( uplinkMode == SEND_TEST_UPLINK_MSG ? &sendUplinkTestMessage :
-                                  ( uplinkMode == SEND_BASIC_UPLINK_MSG ? &sendBasicUplinkTelemetryMessage :
-                                  ( uplinkMode == SEND_BASIC_WITH_DEPTH_UPLINK_MSG ? &sendBasicWithDepthUplinkTelemetryMessage :
-                                  ( uplinkMode == SEND_FULL_UPLINK_MSG ? &sendFullUplinkTelemetryMessage : &sendNoUplinkTelemetryMessages)))));
+                                  ( uplinkMode == SEND_FULL_UPLINK_MSG ? &sendFullUplinkTelemetryMessage : &sendNoUplinkTelemetryMessages)));
 
 #ifdef INCLUDE_TWITTER_AT_COMPILE_TIME
   // TWITTER START
@@ -167,7 +224,6 @@ bool setTweetEmergencyNowFlag = false;
   // QUBITRO END
 #endif
 
-const uint8_t telemetry_send_full_message_duty_cycle = 1;
 uint8_t telemetry_message_count = 0;
 
 const uint32_t console_screen_refresh_minimum_interval = 500; // milliseconds
@@ -186,9 +242,11 @@ AsyncWebServer asyncWebServer(80);
 const uint32_t disabledTempDisplayEndTime = 0xFFFFFFFF;
 uint32_t showTempDisplayEndTime = disabledTempDisplayEndTime;
 const uint32_t showTempDisplayHoldDuration = 5000;
-const uint32_t showTempAudioTestDisplayHoldDuration = 1000;
+const uint32_t showTempAudioTestDisplayHoldDuration = 2000;
 
 char uplink_preamble_pattern[] = "MBJAEJ";
+char uplink_preamble_pattern2[] = "MBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJAEJ";
+
 char uplinkTestMessages[][6] = {"MSG0 ", "MSG1 ", "MSG2 ", "MSG3 "};
 char newWayMarkerLabel[2];
 char directionMetricLabel[2];
@@ -458,8 +516,8 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
 */
  
 
-const uint8_t waypointCountDiveOne = 22;
-const uint8_t waypointExitDiveOne = 21;
+const uint8_t waypointCountDiveOne = 23;
+const uint8_t waypointExitDiveOne = 22;
 
 navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
 {
@@ -477,14 +535,15 @@ navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
   [11] = { ._label = "k ?23N TLights 7m 143d", ._lat = 51, ._long = 1},
   [12] = { ._label = "l 17P 2m", ._lat = 51.4599656, ._long = -0.5480939},
   [13] = { ._label = "m 14P 8m", ._lat = 51.4602986, ._long = -0.5483127},
-  [14] = { ._label = "n 3N Scimatar 5.5m", ._lat = 51.460347, ._long = -0.5489195},
-  [15] = { ._label = "o ?5N Lightning 5.5m 12d", ._lat = 51, ._long = 1},
-  [16] = { ._label = "p 06an Caves", ._lat = 51.460947625, ._long = -0.54878325},
-  [17] = { ._label = "q ?2N Sub 4m 300d", ._lat = 51, ._long = 1},
-  [18] = { ._label = "r ?1N Canoe 3m 7d", ._lat = 51, ._long = 1},
-  [19] = { ._label = "s ?12N Commer Van 6m 340d", ._lat = 51, ._long = 1},
-  [20] = { ._label = "t 13B White Boat 7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
-  [21] = { ._label = "*1z Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
+  [14] = { ._label = "n 8B The Hole", ._lat = 51.4604301666667, ._long = -0.548688166666667},
+  [15] = { ._label = "o 3N Scimatar 5.5m", ._lat = 51.460347, ._long = -0.5489195},
+  [16] = { ._label = "p ?5N Lightning 5.5m 12d", ._lat = 51, ._long = 1},
+  [17] = { ._label = "q 06an Caves", ._lat = 51.460947625, ._long = -0.54878325},
+  [18] = { ._label = "r ?2N Sub 4m 300d", ._lat = 51, ._long = 1},
+  [19] = { ._label = "s ?1N Canoe 3m 7d", ._lat = 51, ._long = 1},
+  [20] = { ._label = "t ?12N Commer Van 6m 340d", ._lat = 51, ._long = 1},
+  [21] = { ._label = "u 13B White Boat 7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [22] = { ._label = "*1z Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
 };
 
 const uint8_t waypointCountDiveTwo = 18;
@@ -716,8 +775,12 @@ bool smoothedCompassCalcInProgress = false;
 uint32_t s_lastCompassNotSmoothedDisplayRefresh = 0;
 const uint32_t s_compassNotSmoothedHeadingUpdateRate = 150; // time between each compass update to screen 
 
+uint32_t s_lastSendTestSerialBytesTest = 0;
+const uint32_t s_sendTestSerialBytesPeriodMs = 1000;
+
+
 uint32_t s_lastTempHumidityDisplayRefresh = 0;
-const uint32_t s_tempHumidityUpdateRate = 1000; // time between each compass update to screen
+const uint32_t s_tempHumidityUpdateRate = 1000; // time between each humidity and depth update to screen
 
 const uint8_t BUTTON_GOPRO_TOP_PIN = 25;
 const uint8_t BUTTON_GOPRO_SIDE_PIN = 0;
@@ -976,13 +1039,13 @@ void setup()
 
   if (useGrovePortForGPS)
   {
+    float_serial.setRxBufferSize(512); // was 256 - must set before begin called
     float_serial.begin(UPLINK_BAUD_RATE, SERIAL_8N1, GROVE_GPS_RX_PIN, GROVE_GPS_TX_PIN);   // pin 33=rx (white M5), pin 32=tx (yellow M5), specifies the grove SCL/SDA pins for Rx/Tx
-    float_serial.setRxBufferSize(256);
   }
   else
   {
+    float_serial.setRxBufferSize(512); // was 256 - must set before begin called
     float_serial.begin(UPLINK_BAUD_RATE, SERIAL_8N1, HAT_GPS_RX_PIN, IR_LED_GPS_TX_PIN);   // pin 26=rx, 9=tx specifies the HAT pin for Rx and the IR LED for Tx (not used)
-    float_serial.setRxBufferSize(256);
   }
   updateButtonsAndBuzzer();
   // cannot use Pin 0 for receive of GPS (resets on startup), can use Pin 36, can use 26
@@ -1133,6 +1196,19 @@ void loop_no_gps()
   sleep(250);
 }
 
+void sendTestSerialBytesWhenReady()
+{
+  uint32_t s_lastSendTestSerialBytesTest = 0;
+  const uint32_t s_sendTestSerialBytesPeriodMs = 1000;
+
+  if (millis() > s_lastSendTestSerialBytesTest + s_sendTestSerialBytesPeriodMs)
+  {
+    s_lastSendTestSerialBytesTest = millis();
+
+    float_serial.write("UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU");
+  }
+}
+
 void loop()
 {
   if (autoShutdownOnNoUSBPower)
@@ -1257,6 +1333,8 @@ bool processGPSMessageIfAvailable()
             // At this point a new lat/long fix has been received and is available.
             refreshAndCalculatePositionalAttributes();
   
+            performUplinkTasks();
+
             acquireAllSensorReadings(); // compass, IMU, Depth, Temp, Humidity, Pressure
     
             checkDivingDepthForTimer(depth);
@@ -1264,9 +1342,7 @@ bool processGPSMessageIfAvailable()
             refreshConsoleScreen();
     
             checkForButtonPresses();
-  
-            performUplinkTasks();
-            
+              
             result = true;
           }
           else
@@ -1387,6 +1463,9 @@ void refreshAndCalculatePositionalAttributes()
 
 void acquireAllSensorReadings()
 {        
+  uint32_t start_time = millis();
+  uint32_t force_end_time = start_time+60;
+  
   if (millis() > s_lastCompassNotSmoothedDisplayRefresh + s_compassNotSmoothedHeadingUpdateRate)
   {
     s_lastCompassNotSmoothedDisplayRefresh = millis();
@@ -1427,6 +1506,13 @@ void acquireAllSensorReadings()
                      &imu_rot_acc_vector.x, &imu_rot_acc_vector.y, &imu_rot_acc_vector.z,
                      &imu_temperature);
   }
+
+  // equalise acquisition time always to 60ms
+  while (millis() < force_end_time);
+  
+  sensor_acquisition_time = (uint16_t)(millis() - start_time);
+  if (sensor_acquisition_time > max_sensor_acquisition_time)
+    max_sensor_acquisition_time = sensor_acquisition_time;
 }
 
 const uint32_t buttonPressDurationToChangeScreen = 50;
@@ -1494,9 +1580,16 @@ void checkForButtonPresses()
     
     case AUDIO_TEST_DISPLAY:
     {
-      if (p_primaryButton->wasReleasefor(5000))    // toggle between espnow and wifi
+      if (p_primaryButton->wasReleasefor(10000))    // toggle between espnow and wifi
       {
         toggleESPNowActive();
+      }
+      if (p_primaryButton->wasReleasefor(2000))    // select next set of guidance sounds
+      {
+        rotateToNextGuidanceSounds();
+        showTempDisplayEndTime = millis() + showTempAudioTestDisplayHoldDuration;        
+        display_to_revert_to = display_to_show;
+        display_to_show = AUDIO_ACTION_DISPLAY_TEMP;
       }
       else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
       {
@@ -1513,7 +1606,7 @@ void checkForButtonPresses()
         publishToSilkyStopPlayback();
         notifySoundsOnOffChanged();
       }
-      else if (p_secondButton->wasReleasefor(5000)) // Skip to next track
+      else if (p_secondButton->wasReleasefor(5000)) // start/stop play
       {
         showTempDisplayEndTime = millis() + showTempAudioTestDisplayHoldDuration;
         display_to_revert_to = display_to_show;
@@ -1521,7 +1614,7 @@ void checkForButtonPresses()
 
         publishToSilkyTogglePlayback();
       }
-      else if (p_secondButton->wasReleasefor(500)) // cycle volume up and then low at max
+      else if (p_secondButton->wasReleasefor(2000)) // cycle volume up and then low at max
       {
         showTempDisplayEndTime = millis() + showTempAudioTestDisplayHoldDuration;
         display_to_revert_to = display_to_show;
@@ -1529,7 +1622,7 @@ void checkForButtonPresses()
 
         publishToSilkyCycleVolumeUp();
       }
-      else if (p_secondButton->wasReleasefor(50)) // start/stop play
+      else if (p_secondButton->wasReleasefor(50)) // Skip to next track
       {
         showTempDisplayEndTime = millis() + showTempAudioTestDisplayHoldDuration;
         display_to_revert_to = display_to_show;
@@ -1537,7 +1630,14 @@ void checkForButtonPresses()
 
         publishToSilkySkipToNextTrack();
       }
-      break;    
+
+      if (display_to_show == AUDIO_ACTION_DISPLAY_TEMP)
+      {
+        M5.Lcd.fillScreen(TFT_GREEN);
+        M5.Lcd.setTextColor(TFT_BLACK,TFT_GREEN);
+      }
+
+      break;
     }
     case COMPASS_CALIBRATION_DISPLAY:
     {
@@ -1549,7 +1649,7 @@ void checkForButtonPresses()
 
       if (p_secondButton->wasReleasefor(1000)) // stop calibration
       {
-        M5.Lcd.print("Saving\nCalibration");
+        M5.Lcd.print("Saving\nCalibration");  
 
         // save current max/min vectors to magnetometer_min and magnetometer_max
         magnetometer_min = calib_magnetometer_min;
@@ -1571,7 +1671,7 @@ void checkForButtonPresses()
         calib_magnetometer_min = vector<double>(initial_min_mag,initial_min_mag,initial_min_mag);
         calib_magnetometer_max = vector<double>(initial_max_mag,initial_max_mag,initial_max_mag);
       }
-      
+
       break;
     }
     default:
@@ -2053,8 +2153,7 @@ void drawThisTarget()
 
 void drawAudioActionDisplay()
 {
-  M5.Lcd.fillScreen(TFT_GREEN);
-  M5.Lcd.setCursor(0, 0);
+  M5.Lcd.setCursor(10, 10);
 
   switch (audioAction)
   {
@@ -2086,6 +2185,13 @@ void drawAudioActionDisplay()
       M5.Lcd.println("Silky:\nSet Volume\n");
       displayESPNowSendDataResult(ESPNowSendResult);
       break;
+
+    case AUDIO_ACTION_ROTATE_SOUND_SET:
+    {
+      M5.Lcd.println("Silky:\nSound Set To\n");
+      M5.Lcd.println(*currentSoundSet);
+      break;
+    }
     
     case AUDIO_ACTION_NONE:
       // shouldn't get here
@@ -2100,7 +2206,7 @@ void drawAudioActionDisplay()
     default:
       // shouldn't get here
       M5.Lcd.println("Silky:\nUndefined Audio Action\n");
-      break;      
+      break;
   }
 
   if (millis() > showTempDisplayEndTime)
@@ -2110,6 +2216,7 @@ void drawAudioActionDisplay()
     showTempDisplayEndTime = disabledTempDisplayEndTime;
     display_to_show = display_to_revert_to;
     M5.Lcd.fillScreen(TFT_BLACK);
+    M5.Lcd.setTextColor(TFT_BLACK, TFT_GREEN);
   }
 }
 
@@ -2163,7 +2270,7 @@ void drawLocationStats()
   M5.Lcd.printf("Lo:%.6f   ", Lng);
 
   M5.Lcd.setCursor(5, 34);
-  M5.Lcd.printf("Depth:%.0f m  ", depth);
+  M5.Lcd.printf("Depth:%.0f m s:%hu ^%hu  ", depth,sensor_acquisition_time, max_sensor_acquisition_time);
 
   M5.Lcd.setCursor(5, 51);
   if (WiFi.status() == WL_CONNECTED)
@@ -2266,7 +2373,14 @@ void drawAudioTest()
 
   M5.Lcd.println(isPairedWithAudioPod ? "Audio Paired" : "Not Paired");
 
-  M5.Lcd.println(isPairedWithAudioPod && soundsOn ? "Sounds On" : "Sounds Off");
+  if (isPairedWithAudioPod && soundsOn)
+  {
+    M5.Lcd.printf("Sounds On (%i)",silkyVolume);
+  }
+  else
+  {
+    M5.Lcd.println("Sounds Off");
+  }
 
   if (writeLogToSerial)
   {
@@ -2298,15 +2412,7 @@ void performUplinkTasks()
 {
   if (enableUplinkComms)
   {
-    if (uplinkMessageCount % telemetry_send_full_message_duty_cycle == 0)
-    {
-      fp_sendUplinkMessage();
-    }
-    else
-    {
-      sendBasicWithDepthUplinkTelemetryMessage();
-      //            sendBasicUplinkTelemetryMessage();
-    }
+    fp_sendUplinkMessage();
 
     uplinkMessageCount++;
   }    
@@ -2349,158 +2455,9 @@ void sendNoUplinkTelemetryMessages()
   /// do nothing
 }
 
-void sendBasicUplinkTelemetryMessage()
-{
-  sendUplinkTelemetryMessageV1();
-}
-
-void sendBasicWithDepthUplinkTelemetryMessage()
-{
-  sendUplinkTelemetryMessageV2();
-}
-
 void sendFullUplinkTelemetryMessage()
 {
   sendUplinkTelemetryMessageV5();
-}
-
-void sendUplinkTelemetryMessageV1()
-{
-  // if 5ms after fix received then send the uplink msg, only get here if no bytes received from Float Serial.
-  const uint32_t quietTimeMsBeforeUplink = 5;
-  if (millis() > latestFixTimeStamp + quietTimeMsBeforeUplink)
-  {
-    latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
-
-    // this is 20 bytes, 160 bits
-    // format: uint16_t len, uint16_t msgtype, unit16_t depth (*10),uint16_t heading (*10),uint16_t temp (*10),uint16_t humid (*10), uint16_t pressure (*10), uint16_t checksum
-
-    // fixed format
-    uint16_t uplink_length = 22;   // including length and checksum.
-    uint16_t uplink_msgtype = 0;   // 0 is telemetry message zero!
-    uint16_t uplink_depth = depth;
-    uint16_t uplink_water_pressure = water_pressure * 100.0;
-    uint16_t uplink_water_temperature = water_temperature * 10.0;
-    uint16_t uplink_enclosure_temperature = temperature * 10.0;
-    uint16_t uplink_enclosure_humidity = humidity * 10.0;
-    uint16_t uplink_enclosure_air_pressure = air_pressure * 10.0;
-    uint16_t uplink_heading = magnetic_heading * 10.0;
-    uint16_t uplink_flags = setTweetLocationNowFlag | (setTweetEmergencyNowFlag << 1);
-    uint16_t uplink_checksum = uplink_length ^ uplink_msgtype ^ uplink_depth ^ uplink_water_pressure ^ uplink_water_temperature ^
-                               uplink_enclosure_temperature ^ uplink_enclosure_humidity ^ uplink_enclosure_air_pressure ^ uplink_flags ^ uplink_heading;
-
-    telemetryMessage[0] = uplink_length;
-    telemetryMessage[1] = uplink_msgtype;
-    telemetryMessage[2] = uplink_depth;
-    telemetryMessage[3] = uplink_water_pressure;
-    telemetryMessage[4] = uplink_water_temperature;
-    telemetryMessage[5] = uplink_enclosure_temperature;
-    telemetryMessage[6] = uplink_enclosure_humidity;
-    telemetryMessage[7] = uplink_enclosure_air_pressure;
-    telemetryMessage[8] = uplink_heading;
-    telemetryMessage[9] = uplink_flags;
-    telemetryMessage[10] = uplink_checksum;
-
-    float_serial.write(uplink_preamble_pattern);
-
-    float_serial.write((char*)telemetryMessage, uplink_length);
-
-    // clear flags
-    if (setTweetLocationNowFlag == true)
-      setTweetLocationNowFlag = false;
-
-    if (setTweetEmergencyNowFlag == true)
-      setTweetEmergencyNowFlag = false;
-  }
-}
-
-void sendUplinkTelemetryMessageV2()
-{
-  // if 2ms after fix received then send the uplink msg, only get here if no bytes received from Float Serial.
-  const uint32_t quietTimeMsBeforeUplink = 5;
-  if (millis() > latestFixTimeStamp + quietTimeMsBeforeUplink)
-  {
-    latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
-
-    // this is 42 bytes, 672 bits
-    // format: uint16_t len, uint16_t msgtype, unit16_t depth (*10),uint16_t heading (*10),uint16_t temp (*10),uint16_t humid (*10), uint16_t pressure (*10), uint16_t checksum
-
-    // fixed format
-
-    uint16_t uplink_length = 46;   // including length and checksum.
-    uint16_t uplink_msgtype = 0;   // 0 is full fat telemetry message zero!
-    uint16_t uplink_depth = depth * 10.0;
-    uint16_t uplink_water_pressure = water_pressure * 100.0;
-    uint16_t uplink_water_temperature = water_temperature * 10.0;
-    uint16_t uplink_enclosure_temperature = temperature * 10.0;
-    uint16_t uplink_enclosure_humidity = humidity * 10.0;
-    uint16_t uplink_enclosure_air_pressure = air_pressure * 10.0;
-    uint16_t uplink_heading = magnetic_heading * 10.0;
-
-    uint16_t uplink_heading_to_target = heading_to_target * 10.0;
-    uint16_t uplink_distance_to_target = (distance_to_target < 6499 ? distance_to_target * 10.0 : 64999);
-    uint16_t uplink_journey_course = journey_course * 10.0;
-    uint16_t uplink_journey_distance = journey_distance * 100.0;
-
-    uint16_t uplink_mako_screen_display = 0xFFFF;     // TO DO
-    uint16_t uplink_mako_seconds_on = millis() / 1000.0;
-    uint16_t uplink_mako_user_action = getOneShotUserActionForUplink();    // action done by user?
-    uint16_t uplink_mako_AXP192_temp = M5.Axp.GetTempInAXP192() * 10.0;
-    uint16_t uplink_mako_usb_voltage = M5.Axp.GetVBusVoltage() * 1000.0;
-    uint16_t uplink_mako_usb_current = M5.Axp.GetVBusCurrent() * 100.0;
-
-    uint16_t uplink_mako_bat_voltage = M5.Axp.GetBatVoltage() * 1000.0;
-    uint16_t uplink_mako_bat_charge_current = M5.Axp.GetBatChargeCurrent() * 100.0;
-
-
-    uint16_t uplink_flags = setTweetLocationNowFlag | (setTweetEmergencyNowFlag << 1);
-    uint16_t uplink_checksum = uplink_length ^ uplink_msgtype ^ uplink_depth ^ uplink_water_pressure ^ uplink_water_temperature ^
-                               uplink_enclosure_temperature ^ uplink_enclosure_humidity ^ uplink_enclosure_air_pressure ^ uplink_flags ^ uplink_heading;
-
-    uint8_t number_uplink_metrics = 22;
-    uint16_t* nextMetric = telemetryMessage;
-
-    *(nextMetric++) = uplink_length;
-    *(nextMetric++) = uplink_msgtype;
-    *(nextMetric++) = uplink_depth;
-    *(nextMetric++) = uplink_water_pressure;
-    *(nextMetric++) = uplink_water_temperature;
-    *(nextMetric++) = uplink_enclosure_temperature;
-    *(nextMetric++) = uplink_enclosure_humidity;
-    *(nextMetric++) = uplink_enclosure_air_pressure;
-    *(nextMetric++) = uplink_heading;
-    *(nextMetric++) = uplink_heading_to_target;
-    *(nextMetric++) = uplink_distance_to_target;
-    *(nextMetric++) = uplink_journey_course;
-    *(nextMetric++) = uplink_journey_distance;
-    *(nextMetric++) = uplink_mako_screen_display;
-    *(nextMetric++) = uplink_mako_seconds_on;
-    *(nextMetric++) = uplink_mako_user_action;
-    *(nextMetric++) = uplink_mako_AXP192_temp;
-    *(nextMetric++) = uplink_mako_usb_voltage;
-    *(nextMetric++) = uplink_mako_usb_current;
-    *(nextMetric++) = uplink_mako_bat_voltage;
-    *(nextMetric++) = uplink_mako_bat_charge_current;
-    *(nextMetric++) = uplink_flags;
-    *(nextMetric++) = 0;   // initialise checksum to zero prior to computing checksum
-
-    // calculate and store checksum by xor'ing all words.
-    for (int i = 0; i < number_uplink_metrics; i++)
-    {
-      telemetryMessage[number_uplink_metrics] ^= telemetryMessage[i];
-    }
-
-    float_serial.write(uplink_preamble_pattern);
-
-    float_serial.write((char*)telemetryMessage, uplink_length);
-
-    // clear flags
-    if (setTweetLocationNowFlag == true)
-      setTweetLocationNowFlag = false;
-
-    if (setTweetEmergencyNowFlag == true)
-      setTweetEmergencyNowFlag = false;
-  }
 }
 
 enum e_user_action{NO_USER_ACTION=0x0000, HIGHLIGHT_USER_ACTION=0x0001};
@@ -2519,12 +2476,14 @@ uint16_t getOneShotUserActionForUplink()
   return (uint16_t)userAction;
 }
 
+// send number of good messages received and number of bad messages received. 16 bit for both.
 void sendUplinkTelemetryMessageV5()
 {
-  // if 1ms after fix received then send the uplink msg, only get here if no bytes received from Float Serial.
-  const uint32_t quietTimeMsBeforeUplink = 5;
-  if (millis() > latestFixTimeStamp + quietTimeMsBeforeUplink)
-  {
+  const uint32_t quietTimeMsBeforeUplink = 0; // disabled - always uplink on call to this method
+
+//  delay(10);    // 10ms delay before sending
+//  if (millis() > latestFixTimeStamp + quietTimeMsBeforeUplink)
+//  {
     latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
 
     // this is 57 words, 114 bytes including checksum (56 metrics)
@@ -2551,7 +2510,9 @@ void sendUplinkTelemetryMessageV5()
     uint16_t uplink_mako_seconds_on = millis() / 1000.0 / 60.0;
     uint16_t uplink_mako_user_action = getOneShotUserActionForUplink();
 
-    uint16_t uplink_mako_AXP192_temp = M5.Axp.GetTempInAXP192() * 10.0;
+//    uint16_t uplink_mako_AXP192_temp = M5.Axp.GetTempInAXP192() * 10.0;     /// changed to number of bad lemon msg uint16_t
+    uint16_t uplink_mako_bad_checksum_msgs = newFailedChecksum;
+
     uint16_t uplink_mako_usb_voltage = M5.Axp.GetVBusVoltage() * 1000.0;
     uint16_t uplink_mako_usb_current = M5.Axp.GetVBusCurrent() * 100.0;
 
@@ -2577,7 +2538,8 @@ void sendUplinkTelemetryMessageV5()
     float uplink_mako_imu_rot_acc_y = imu_rot_acc_vector.y;
     float uplink_mako_imu_rot_acc_z = imu_rot_acc_vector.z;
 
-    float uplink_mako_imu_temperature = imu_temperature * 10.0;
+//    float uplink_mako_imu_temperature = imu_temperature * 10.0;    /// changed to number of good lemon msg uint16_t
+    uint16_t uplink_mako_good_checksum_msgs = newPassedChecksum;
 
     uint16_t uplink_flags = setTweetLocationNowFlag | (setTweetEmergencyNowFlag << 1);
 
@@ -2618,7 +2580,7 @@ void sendUplinkTelemetryMessageV5()
 
     *(nextMetric++) = uplink_mako_seconds_on;
     *(nextMetric++) = uplink_mako_user_action;
-    *(nextMetric++) = uplink_mako_AXP192_temp;
+    *(nextMetric++) = uplink_mako_bad_checksum_msgs;
     *(nextMetric++) = uplink_mako_usb_voltage;
     *(nextMetric++) = uplink_mako_usb_current;
     *(nextMetric++) = uplink_mako_bat_voltage;
@@ -2646,7 +2608,7 @@ void sendUplinkTelemetryMessageV5()
     p = (char*) &uplink_mako_imu_rot_acc_z;     *(nextMetric++) = *(p++) | (*(p++) << 8); *(nextMetric++) = *(p++) | (*(p++) << 8);
 
     // 2 x 16 bit words (2 x 2 byte metrics)
-    *(nextMetric++) = uplink_mako_imu_temperature;
+    *(nextMetric++) = uplink_mako_good_checksum_msgs;
     *(nextMetric++) = newWayMarker; // guidance graphic enum
 
     switch (newWayMarker)         // guidance label
@@ -2685,7 +2647,7 @@ void sendUplinkTelemetryMessageV5()
 
     telemetryMessage[wordsToXOR-1] = checksum;
 
-    float_serial.write(uplink_preamble_pattern);
+    float_serial.write(uplink_preamble_pattern2);
 
     float_serial.write((char*)telemetryMessage, uplink_length);
 
@@ -2695,7 +2657,7 @@ void sendUplinkTelemetryMessageV5()
 
     if (setTweetEmergencyNowFlag == true)
       setTweetEmergencyNowFlag = false;
-  }
+//  }
 }
 
 void sendUplinkTestMessage()
@@ -2779,15 +2741,17 @@ void testForDualButtonPressAutoShutdownChange()
   }
 }
 
+const int32_t durationBetweenGuidanceSounds = 3000;
+
 void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
 {
   if (!enableNavigationGraphics)
     return;
 
-  // Calculate whether the traveller needs to continue straight ahead,
+  // Calculate whether the diver needs to continue straight ahead,
   // rotate clockwise or rotate anticlockwise and update graphic.
   // Blacks out if no journey recorded.
-  int16_t edgeBound = 25;    // If journey course within +- 25 degrees of target heading then go ahead
+  const int16_t edgeBound = 25;    // If journey course within +- 25 degrees of target heading then go ahead
 
   int16_t normaliser = (int16_t)(directionOfTravel);
 
@@ -2824,7 +2788,7 @@ void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
   }
   else
   {
-    if (millis() - lastWayMarkerChangeTimestamp > 1000)
+    if (millis() - lastWayMarkerChangeTimestamp > durationBetweenGuidanceSounds)
     {
       lastWayMarkerChangeTimestamp = millis();
 
@@ -3398,65 +3362,6 @@ void toggleSound()
     soundsOn = true;  
 }
 
-void toggleOTAActive()
-{
-  M5.Lcd.fillScreen(TFT_ORANGE);
-  M5.Lcd.setCursor(0, 0);
-  M5.Lcd.setRotation(1);
-
-  if (otaActiveListening)
-  {
-    asyncWebServer.end();
-    M5.Lcd.println("OTA Disabled");
-    otaActiveListening = false;
-    delay (2000);
-  }
-  else
-  {
-    bool wifiToggled = false;
-    if (WiFi.status() != WL_CONNECTED)
-    {
-      toggleWiFiActive();
-      wifiToggled = true;
-
-      M5.Lcd.fillScreen(TFT_ORANGE);
-      M5.Lcd.setCursor(0, 0);
-      M5.Lcd.setRotation(1);
-    }
-
-
-    if (WiFi.status() == WL_CONNECTED)
-    {
-      if (otaFirstInit == false)
-      {
-        asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
-          request->send(200, "text/plain", "To upload firmware use /update");
-        });
-
-        AsyncElegantOTA.begin(&asyncWebServer);    // Start AsyncElegantOTA
-        asyncWebServer.begin();
-      }
-
-      asyncWebServer.begin();
-
-      if (wifiToggled)
-        M5.Lcd.printf("OTA & WiFi Enabled");
-      else
-        M5.Lcd.printf("OTA Enabled");
-              
-      otaActiveListening = true;
-    }
-    else
-    {
-      M5.Lcd.println("Error: Enable Wifi First");
-    }
-    
-    delay (2000);
-  }
-
-  M5.Lcd.fillScreen(TFT_BLACK);
-}
-
 void notifyESPNowNotActive()
 {
   M5.Lcd.fillScreen(TFT_RED);
@@ -3486,7 +3391,7 @@ void displayESPNowSendDataResult(const esp_err_t result)
 
 void publishToSilkyPlayAudioGuidance(enum e_soundFX sound)
 {
-  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
+  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL && sound != SFX_NONE)
   {
     ESPNow_data_to_send = (uint8_t)sound;
     const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
@@ -3517,12 +3422,17 @@ void publishToSilkyCycleVolumeUp()
       silkyVolume = minSilkyVolume;
     else
       silkyVolume++;
-      
+
+    publishToSilkySetVolume(silkyVolume);
+
+    audioAction = AUDIO_ACTION_CYCLE_VOLUME;
+/*
     // Send byte command to Silky to say skip to next track
     ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP;
     const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
     ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
     audioAction = AUDIO_ACTION_CYCLE_VOLUME;
+    */
   }
 }
 
@@ -3532,11 +3442,11 @@ void publishToSilkySetVolume(const uint8_t newVolume)
   {
     silkyVolume = newVolume;
       
-    // Send byte command to Silky to say skip to next track
+    // Send byte command to Silky to say set volume to silkyVolume
     uint16_t ESPNow_word_to_send = ((uint16_t)silkyVolume << 8) | (uint16_t)SILKY_ESPNOW_COMMAND_SET_VOLUME;
     const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
     ESPNowSendResult = esp_now_send(peer_addr, (uint8_t*)&ESPNow_word_to_send, sizeof(ESPNow_word_to_send));
-    audioAction = AUDIO_ACTION_NONE;
+    audioAction = AUDIO_ACTION_NONE;  // done on startup and no screen change needed.
   }
 }
 
@@ -3606,7 +3516,7 @@ void toggleESPNowActive()
         ESPNowActive = true;
 
         M5.Lcd.setRotation(0);
-        M5.Lcd.println("ESPNow\nEnabled");
+        M5.Lcd.println("  ESPNow\nSearching\n");
         if (writeLogToSerial)
           USB_SERIAL.println("Wifi\nDisabled\nESPNow\nEnabled");
 
@@ -3623,7 +3533,7 @@ void toggleESPNowActive()
           TeardownESPNow();
           ESPNowActive = false;
     
-          M5.Lcd.println("ESPNow Disabled");
+          M5.Lcd.println("   ESPNow\nDisabled");
           if (writeLogToSerial)
             USB_SERIAL.println("ESPNow Disabled");
         }
@@ -3657,7 +3567,9 @@ void toggleESPNowActive()
 void toggleWiFiActive()
 {
   M5.Lcd.fillScreen(TFT_ORANGE);
-  M5.Lcd.setCursor(0, 0);
+  M5.Lcd.setCursor(10, 10);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
 
   if (ESPNowActive)
     toggleESPNowActive();
@@ -3673,6 +3585,7 @@ void toggleWiFiActive()
 
     WiFi.disconnect();
     ssid_connected = ssid_not_connected;
+    M5.Lcd.setCursor(0, 10);
     M5.Lcd.printf("Wifi Disabled");
     delay (2000);
   }
@@ -3684,6 +3597,88 @@ void toggleWiFiActive()
     if (!connectWiFiNoOTA(ssid_1, password_1, label_1, timeout_1))
       if (!connectWiFiNoOTA(ssid_2, password_2, label_2, timeout_2))
         connectWiFiNoOTA(ssid_3, password_3, label_3, timeout_3);
+
+    M5.Lcd.fillScreen(TFT_ORANGE);
+    M5.Lcd.setCursor(10, 10);
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.setRotation(1);
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+
+    M5.Lcd.printf(WiFi.status() == WL_CONNECTED ? "Wifi Enabled" : "No Connect");
+    
+    delay(2000);
+  }
+
+  M5.Lcd.fillScreen(TFT_BLACK);
+}
+
+
+void toggleOTAActive()
+{
+  M5.Lcd.fillScreen(TFT_ORANGE);
+  M5.Lcd.setCursor(10, 10);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+  M5.Lcd.setRotation(1);
+
+  if (otaActiveListening)
+  {
+    asyncWebServer.end();
+    M5.Lcd.println("OTA Disabled");
+    otaActiveListening = false;
+    delay (2000);
+  }
+  else
+  {
+    bool wifiToggled = false;
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      toggleWiFiActive();
+      wifiToggled = true;
+
+      M5.Lcd.fillScreen(TFT_ORANGE);
+      M5.Lcd.setCursor(10, 10);
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+    }
+    
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      if (otaFirstInit == false)
+      {
+        asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
+          request->send(200, "text/plain", "To upload firmware use /update");
+        });
+
+        AsyncElegantOTA.begin(&asyncWebServer);    // Start AsyncElegantOTA
+        asyncWebServer.begin();
+      }
+
+      asyncWebServer.begin();
+
+      if (wifiToggled)
+      {
+        // Clear the QR Code from new wifi connection
+        M5.Lcd.fillScreen(TFT_ORANGE);
+        M5.Lcd.setCursor(10, 10);
+        M5.Lcd.setTextSize(3);
+        M5.Lcd.setRotation(1);
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+        
+        M5.Lcd.printf(" OTA & WiFi\n   Enabled");
+      }
+      else
+      {
+        M5.Lcd.printf("OTA Enabled");
+      }
+              
+      otaActiveListening = true;
+    }
+    else
+    {
+      M5.Lcd.println("Error: Enable Wifi First");
+    }
+    
+    delay (2000);
   }
 
   M5.Lcd.fillScreen(TFT_BLACK);
@@ -3694,7 +3689,9 @@ void toggleUptimeGlobalDisplay()
   enableGlobalUptimeDisplay = !enableGlobalUptimeDisplay;
 
   M5.Lcd.fillScreen(TFT_ORANGE);
-  M5.Lcd.setCursor(0, 0);
+  M5.Lcd.setCursor(20, 10);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
   if (enableGlobalUptimeDisplay)
     M5.Lcd.println("Uptime On");
   else
@@ -3711,7 +3708,9 @@ void toggleUplinkMessageProcessAndSend()
   enableUplinkComms = !enableUplinkComms;
 
   M5.Lcd.fillScreen(TFT_ORANGE);
-  M5.Lcd.setCursor(0, 0);
+  M5.Lcd.setCursor(20, 10);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
   if (enableUplinkComms)
     M5.Lcd.println("Uplink On");
   else
