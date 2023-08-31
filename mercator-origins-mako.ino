@@ -510,11 +510,55 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
 };
 */
 
+
+
+
+// Dive 1 - 1st Sep with Curt and Miguel
+const uint8_t waypointCountDiveOne = 14;
+const uint8_t waypointExitDiveOne = 13;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+  [0] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "?17P 115d, 2m", ._lat = 51, ._long = 1},
+  [2] = { ._label = "15P Cargo Rusty 8m", ._lat = 51.460192, ._long = -0.548283},
+  [3] = { ._label = "?14P 350d, 8m", ._lat = 51, ._long = 1},
+  [4] = { ._label = "13B White Boat 7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [5] = { ._label = "06bN Caves Lion Entrance Caves", ._lat = 51.460817, ._long = -0.548734},
+  [6] = { ._label = "06aN Caves Centre", ._lat = 51.460947625, ._long = -0.54878325},
+  [7] = { ._label = "?2B Sub 300d, 4m", ._lat = 51, ._long = 1},
+  [8] = { ._label = "06aN Caves Centre", ._lat = 51.460947625, ._long = -0.54878325},
+  [9] = { ._label = "?5N Litning 192d, 5.5m", ._lat = 51, ._long = 1},
+  [10] = { ._label = "06aN Caves Centre", ._lat = 51.460947625, ._long = -0.54878325},
+  [11] = { ._label = "?12N Commer 22d, 6m", ._lat = 51, ._long = 1},
+  [12] = { ._label = "?1N Canoe 339d, 3m", ._lat = 51, ._long = 1},
+  [13] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
+};
+
+// Dive 2 - 1st Sep with Curt and Miguel
+
+const uint8_t waypointCountDiveTwo = 13;
+const uint8_t waypointExitDiveTwo = 12;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "*1 Mid Jetty", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "29B Dive/Spike Boat 7m", ._lat = 51.4601315714286, ._long = -0.547417857142857},
+  [2] = { ._label = "?28P 0d 6m", ._lat = 51, ._long = 1},
+  [3] = { ._label = "34P 6m", ._lat = 51.460312, ._long = -0.547165},
+  [4] = { ._label = "?28P 235d 6m", ._lat = 51, ._long = 1},
+  [5] = { ._label = "21B Sticky Up Boat 5m", ._lat = 51.4602514070597, ._long = -0.54789158281982},
+  [6] = { ._label = "?23N TrafLit 143d 7m", ._lat = 51, ._long = 1},
+  [7] = { ._label = "46N Plane", ._lat = 51.459745, ._long = -0.546649},
+  [8] = { ._label = "49B Claymore 6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [9] = { ._label = "44N VW Van", ._lat = 51.459368, ._long = -0.546760142857143},
+  [10] = { ._label = "?37N Dive Bell 307d 4m", ._lat = 51, ._long = 1},
+  [11] = { ._label = "33N New (Row) Boat 4.5m", ._lat = 51.4595563333333, ._long = -0.547263333333333},
+  [12] = { ._label = "*1 Mid Jetty", ._lat = 51.459547, ._long = -0.547461}
+};
+
 /*
- * Week of 14 August Dives 1 and 2
- * 
-*/
- 
+// Solo dives on 30 August - repeat after previous flood with dive with Curt week of 14th August
 
 const uint8_t waypointCountDiveOne = 23;
 const uint8_t waypointExitDiveOne = 22;
@@ -547,7 +591,7 @@ navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
 };
 
 const uint8_t waypointCountDiveTwo = 18;
-const uint8_t waypointExitDiveTwo = 21;
+const uint8_t waypointExitDiveTwo = 17;
 
 navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
 {
@@ -570,6 +614,7 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
   [16] = { ._label = "p 10N Bus", ._lat = 51.460073, ._long = -0.548515},
   [17] = { ._label = "*2z Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
 };
+*/
 
 const uint8_t* p_currentDiveWaypointCount = NULL;
 const uint8_t* p_currentDiveWaypointExit = NULL;
