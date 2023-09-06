@@ -1788,12 +1788,17 @@ void checkForButtonPresses()
         M5.Lcd.fillScreen(TFT_BLACK);
         goto show_current_target;
       }
-      else if (p_primaryButton->wasReleasefor(2000)) // Nav Screens : show lat long for 5 seconds
+      else if (p_primaryButton->wasReleasefor(5000)) // Nav Screens : show lat long for 5 seconds
       {
         showTempDisplayEndTime = millis() + showTempDisplayHoldDuration;
         display_to_revert_to = display_to_show;
         display_to_show = SHOW_LAT_LONG_DISPLAY_TEMP;
         M5.Lcd.fillScreen(TFT_BLACK);
+      }
+      else if (p_primaryButton->wasReleasefor(2000)) // Record Highlight
+      {
+        recordSurveyHighlight = true;
+        recordHighlightExpireTime = millis() + recordHighlightDisplayDuration;
       }
       else if (p_primaryButton->wasReleasefor(buttonPressDurationToChangeScreen))  // change display screen
       {
@@ -1807,7 +1812,7 @@ void checkForButtonPresses()
       }
       else if (p_secondButton->wasReleasefor(3000))     // Nav Screens: goto last dive target (jettie)
       {
-        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
+        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 2;
 
         // goto dive exit (the last target on the list)
         nextWaypoint = currentDiveWaypoints + *p_currentDiveWaypointExit;
@@ -1818,7 +1823,7 @@ void checkForButtonPresses()
       }
       else if (p_secondButton->wasReleasefor(1000))     // Nav Screens: switch to next target
       {
-        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 3;
+        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration / 2;
         // head to next target, if at end of target list go to the top of the list
 
         if (++nextWaypoint == currentDiveWaypoints + *p_currentDiveWaypointCount)
@@ -1831,7 +1836,7 @@ void checkForButtonPresses()
       else if (p_secondButton->wasReleasefor(50))      // Nav Screens: remind diver of current target
       {
         show_current_target:
-        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration  / 3;
+        showTempDisplayEndTime = millis() + showTempDisplayHoldDuration  / 2;
 
         // don't change target - remind diver of current target
         display_to_revert_to = display_to_show;
@@ -2084,29 +2089,50 @@ void drawTargetSection()
       
     M5.Lcd.printf("%2lu", satellites);
 
-    // Display distance to target in metres, with by 'm' suffix
-    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-    M5.Lcd.setCursor(x, y);
-    M5.Lcd.setTextSize(5);
-
-    if (distance_to_target < 1000)      //     (less than 1km)
+    if (recordHighlightExpireTime != 0)
     {
-      M5.Lcd.printf("\n%3.0f", distance_to_target);
       M5.Lcd.setTextSize(3);
-
-      x = M5.Lcd.getCursorX();
-      y = M5.Lcd.getCursorY();
-
-      metre_offset = 14;
-      M5.Lcd.setCursor(x, y + metre_offset);
-      M5.Lcd.print("m");
+      M5.Lcd.setTextColor(TFT_MAGENTA, TFT_BLACK);
       M5.Lcd.setCursor(x, y);
-      M5.Lcd.setTextSize(5);
-      M5.Lcd.println("");
+      M5.Lcd.print("\n");
+      M5.Lcd.setTextSize(4);
+  
+      if (millis() < recordHighlightExpireTime)
+      {
+        M5.Lcd.printf("-PIN-\n");
+      }
+      else
+      {
+        recordHighlightExpireTime = 0;
+        M5.Lcd.print("     \n");
+      }
     }
     else
     {
-      M5.Lcd.printf("\n*%3d", ((uint32_t)distance_to_target) % 1000);
+      // Display distance to target in metres, with by 'm' suffix
+      M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+      M5.Lcd.setCursor(x, y);
+      M5.Lcd.setTextSize(5);
+  
+      if (distance_to_target < 1000)      //     (less than 1km)
+      {
+        M5.Lcd.printf("\n%3.0f", distance_to_target);
+        M5.Lcd.setTextSize(3);
+  
+        x = M5.Lcd.getCursorX();
+        y = M5.Lcd.getCursorY();
+  
+        metre_offset = 14;
+        M5.Lcd.setCursor(x, y + metre_offset);
+        M5.Lcd.print("m");
+        M5.Lcd.setCursor(x, y);
+        M5.Lcd.setTextSize(5);
+        M5.Lcd.println("");
+      }
+      else
+      {
+        M5.Lcd.printf("\n*%3d", ((uint32_t)distance_to_target) % 1000);
+      }
     }
   }
 }
