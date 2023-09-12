@@ -510,6 +510,119 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
 };
 */
 
+// Dive 1 - Next dives after 12 September
+
+const uint8_t waypointCountDiveOne = 17;
+const uint8_t waypointExitDiveOne = 16;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+  [0] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "14P? Cargo 8m North of 15P", ._lat = 51.4602986, ._long = -0.5483127},
+  [2] = { ._label = "21B Sticky Up Boat 5m", ._lat = 51.4602514070597, ._long = -0.54789158281982},
+  [3] = { ._label = "28P? 6m 90d fr StickyUp", ._lat = 0, ._long = 0},
+  [4] = { ._label = "34P 6m", ._lat = 51.460312, ._long = -0.547165},
+  [5] = { ._label = "28P? 6m 136d fr 34P", ._lat = 0, ._long = 0},
+  [6] = { ._label = "30B White boat by platform", ._lat = 51.4598131428572, ._long = -0.547380285714286},
+  [7] = { ._label = "38B? Lifeboat 6.5m 78d fr white boat", ._lat = 0, ._long = 0},
+  [8] = { ._label = "38B Lifeboat 6.5m", ._lat = 51.4598136301389, ._long = -0.546991890449386},
+  [9] = { ._label = "45B List Sharon 7.5m", ._lat = 51.4598098699702, ._long = -0.54670373432756},
+  [10] = { ._label = "38B? Lifeboat 6.5m 271d fr list sharon", ._lat = 0, ._long = 0},
+  [11] = { ._label = "49B Claymore 6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [12] = { ._label = "48N Holey Ship 4.5m 191d fr claymore", ._lat = 0, ._long = 0},
+  [13] = { ._label = "47P 6m by Holey", ._lat = 51.459399, ._long = -0.546594},
+  [14] = { ._label = "51B Orca Van", ._lat = 51.4591431428571, ._long = -0.545936857142857},
+  [15] = { ._label = "Find Big Sphere reeds on left", ._lat = 51.4591431428571, ._long = -0.545936857142857},
+  [16] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461}
+};
+
+// Dive 2 - Next dives after 12 September
+
+const uint8_t waypointCountDiveTwo = 17;
+const uint8_t waypointExitDiveTwo = 16;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "14P? Cargo 8m North of 15P", ._lat = 51.4602986, ._long = -0.5483127},
+  [2] = { ._label = "12N Commer Van 6m", ._lat = 51.4613355909091, ._long = -0.548469727272727},
+  [3] = { ._label = "01N? Canoe 3m 340d from Commer", ._lat = 0, ._long = 0},
+  [4] = { ._label = "12N Commer Van 6m", ._lat = 51.4613355909091, ._long = -0.548469727272727},
+  [5] = { ._label = "06aN Caves Centre", ._lat = 51.460947625, ._long = -0.54878325},
+  [6] = { ._label = "02N? Sub 4m 299d from Caves", ._lat = 0, ._long = 0},
+  [7] = { ._label = "05N Lightning Boat", ._lat = 51.4605855, ._long = -0.548901666666667},
+  [8] = { ._label = "02N? Sub 4m 335d fr lightning", ._lat = 0, ._long = 0},
+  [9] = { ._label = "06aN Caves Centre", ._lat = 51.460947625, ._long = -0.54878325},
+  [10] = { ._label = "01N? Canoe 3m 355d fr cave centre", ._lat = 0, ._long = 0},
+  [11] = { ._label = "02N? Sub 4m 187d fr canoe", ._lat = 0, ._long = 0},
+  [12] = { ._label = "13B White Boat 7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [13] = { ._label = "19N Chick Hutch Boat", ._lat = 51.4604027142857, ._long = -0.54804},
+  [14] = { ._label = "18N Milk Float", ._lat = 51.4601745714286, ._long = -0.548058571428571},
+  [15] = { ._label = "20N Sweet Bowl 311d from (22B)", ._lat = 51.46020025, ._long = -0.5479775},
+  [16] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
+};
+
+/*
+// Dive 1 - 12th Sep Solo
+
+const uint8_t waypointCountDiveOne = 26;
+const uint8_t waypointExitDiveOne = 25;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+  [0] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "14P? Cargo 8m North of 15P", ._lat = 51.4602986, ._long = -0.5483127},
+  [2] = { ._label = "03N Scimitar", ._lat = 51.460347, ._long = -0.5489195},
+  [3] = { ._label = "X02 Quarry Machine in Reeds", ._lat = 51.460434, ._long = -0.548921},
+  [4] = { ._label = "05N Lightning1 12d fr Scimitar (03N)", ._lat = 51.4605855, ._long = -0.548901666666667},
+  [5] = { ._label = "02N? Sub 4m 337d from Lightning (5)", ._lat = 0, ._long = 0},
+  [6] = { ._label = "06bN Caves Lion Entrance Caves", ._lat = 51.460817, ._long = -0.548734},
+  [7] = { ._label = "02N? Sub 4m 299d from Caves", ._lat = 0, ._long = 0},
+  [8] = { ._label = "01N? Canoe 3m 7d from Sub (2)", ._lat = 0, ._long = 0},
+  [9] = { ._label = "06bN Caves Lion Entrance Caves", ._lat = 51.460817, ._long = -0.548734},
+  [10] = { ._label = "01N? Canoe 3m 356d from Caves", ._lat = 0, ._long = 0},
+  [11] = { ._label = "12Na? Commer Van 6m 159d fr canoe", ._lat = 0, ._long = 0},
+  [12] = { ._label = "24N Half Die Hard Taxi", ._lat = 51.460773, ._long = -0.547620875},
+  [13] = { ._label = "12Na? Commer Van 6m 317d fr die hard", ._lat = 0, ._long = 0},
+  [14] = { ._label = "06bN Caves Lion Entrance Caves", ._lat = 51.460817, ._long = -0.548734},
+  [15] = { ._label = "12Na? Commer Van 6m 22d fr caves", ._lat = 0, ._long = 0},
+  [16] = { ._label = "21B Sticky Up Boat 5m", ._lat = 51.4602514070597, ._long = -0.54789158281982},
+  [17] = { ._label = "28P? 6m 90d fr StickyUp", ._lat = 0, ._long = 0},
+  [18] = { ._label = "34P 6m", ._lat = 51.460312, ._long = -0.547165},
+  [19] = { ._label = "28P? 6m 136d fr 34P", ._lat = 0, ._long = 0},
+  [20] = { ._label = "35N Dragon Boat 7.5m", ._lat = 51.4599636666667, ._long = -0.547154333333333},
+  [21] = { ._label = "38B? Lifeboat 6.5m 56d fr Drag", ._lat = 0, ._long = 0},
+  [22] = { ._label = "38B? Lifeboat 6.5m", ._lat = 51.4598136301389, ._long = -0.546991890449386},
+  [23] = { ._label = "49B Claymore 6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [24] = { ._label = "48N Holey Ship 191d from 49B 4.5m", ._lat = 0, ._long = 0},
+  [25] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461}
+};
+
+// Dive 2 - 12th Sep Solo
+
+const uint8_t waypointCountDiveTwo = 14;
+const uint8_t waypointExitDiveTwo = 13;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "30B White boat by platform", ._lat = 51.4598131428572, ._long = -0.547380285714286},
+  [2] = { ._label = "38B? Lifeboat 78d 6.5m ", ._lat = 51.4598136301389, ._long = -0.546991890449386},
+  [3] = { ._label = "45B List Sharon 7.5m", ._lat = 51.4598098699702, ._long = -0.54670373432756},
+  [4] = { ._label = "46N Plane", ._lat = 51.459745, ._long = -0.546649},
+  [5] = { ._label = "49B Claymore 6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [6] = { ._label = "48N Holey Ship 191d from 49B 4.5m", ._lat = 0, ._long = 0},
+  [7] = { ._label = "50cN Swim Through - crates", ._lat = 51.4592045, ._long = -0.545912625},
+  [8] = { ._label = "51B Orca Van", ._lat = 51.4591431428571, ._long = -0.545936857142857},
+  [9] = { ._label = "X15? Sphere Bell via Reeds to Old Jetty", ._lat = 0, ._long = 0},
+  [10] = { ._label = "44N VW Van", ._lat = 51.459368, ._long = -0.546760142857143},
+  [11] = { ._label = "37N Dive Bell", ._lat = 51.4595419038462, ._long = -0.547160394230769},
+  [12] = { ._label = "39N London Black Cab", ._lat = 51.459729, ._long = -0.546992857142857},
+  [13] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461}
+};
+*/
+
+/*
 // Dive 1 - 7th Sep with Curt, Ben, Penny
 
 const uint8_t waypointCountDiveOne = 20;
@@ -561,6 +674,7 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
   [12] = { ._label = "39N London Black Cab", ._lat = 51.459729, ._long = -0.546992857142857},
   [13] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461}
 };
+*/
 
 /*
 
@@ -1565,8 +1679,11 @@ void refreshAndCalculatePositionalAttributes()
 
 void acquireAllSensorReadings()
 {        
+//  const uint32_t minimum_sensor_read_time = 60; // milliseconds
+  const uint32_t minimum_sensor_read_time = 0; // disable
+  
   uint32_t start_time = millis();
-  uint32_t force_end_time = start_time+60;
+  uint32_t forced_standardised_sensor_read_time = start_time+minimum_sensor_read_time;
   
   if (millis() > s_lastCompassNotSmoothedDisplayRefresh + s_compassNotSmoothedHeadingUpdateRate)
   {
@@ -1610,7 +1727,7 @@ void acquireAllSensorReadings()
   }
 
   // equalise acquisition time always to 60ms
-  while (millis() < force_end_time);
+  while (millis() < forced_standardised_sensor_read_time);
   
   sensor_acquisition_time = (uint16_t)(millis() - start_time);
   if (sensor_acquisition_time > max_sensor_acquisition_time)
