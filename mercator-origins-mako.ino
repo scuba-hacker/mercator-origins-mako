@@ -992,7 +992,7 @@ const uint32_t s_sendTestSerialBytesPeriodMs = 1000;
 
 
 uint32_t s_lastTempHumidityDisplayRefresh = 0;
-const uint32_t s_tempHumidityUpdateRate = 1000; // time between each humidity and depth update to screen
+const uint32_t s_tempHumidityUpdatePeriod = 1000; // time between each humidity and depth update to screen
 
 const uint8_t BUTTON_GOPRO_TOP_PIN = 25;
 const uint8_t BUTTON_GOPRO_SIDE_PIN = 0;
@@ -1679,8 +1679,8 @@ void refreshAndCalculatePositionalAttributes()
 
 void acquireAllSensorReadings()
 {        
-//  const uint32_t minimum_sensor_read_time = 60; // milliseconds
-  const uint32_t minimum_sensor_read_time = 0; // disable
+  const uint32_t minimum_sensor_read_time = 20; // milliseconds
+//  const uint32_t minimum_sensor_read_time = 0; // disable
   
   uint32_t start_time = millis();
   uint32_t forced_standardised_sensor_read_time = start_time+minimum_sensor_read_time;
@@ -1713,7 +1713,7 @@ void acquireAllSensorReadings()
     }
   }
 
-  if (millis() > s_lastTempHumidityDisplayRefresh + s_tempHumidityUpdateRate)
+  if (millis() > s_lastTempHumidityDisplayRefresh + s_tempHumidityUpdatePeriod)
   {
     s_lastTempHumidityDisplayRefresh = millis();
     //           getTempAndHumidity(humidity, temperature);
@@ -1726,7 +1726,7 @@ void acquireAllSensorReadings()
                      &imu_temperature);
   }
 
-  // equalise acquisition time always to 60ms
+  // equalise acquisition time to be set to a minimum
   while (millis() < forced_standardised_sensor_read_time);
   
   sensor_acquisition_time = (uint16_t)(millis() - start_time);
