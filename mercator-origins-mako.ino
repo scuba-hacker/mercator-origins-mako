@@ -137,7 +137,7 @@ const int SCREEN_WIDTH = 135;
 
 const int UPLINK_BAUD_RATE = 9600;
 
-enum e_display_brightness {OFF_DISPLAY = 7, DIM_DISPLAY = 8, HALF_BRIGHT_DISPLAY = 10, BRIGHTEST_DISPLAY = 14};
+enum e_display_brightness {OFF_DISPLAY = 0, DIM_DISPLAY = 25, HALF_BRIGHT_DISPLAY = 50, BRIGHTEST_DISPLAY = 100};
 enum e_uplinkMode {SEND_NO_UPLINK_MSG, SEND_TEST_UPLINK_MSG, SEND_FULL_UPLINK_MSG};
 
 void sendNoUplinkTelemetryMessages();
@@ -1339,7 +1339,7 @@ void setup()
 
 void loop_no_gps()
 {
-  M5.Axp.ScreenBreath(10);             // 8 mid brightness
+  M5.Axp.ScreenBreath(HALF_BRIGHT_DISPLAY);
 
   if (autoShutdownOnNoUSBPower)
     shutdownIfUSBPowerOff();
@@ -4003,9 +4003,9 @@ void shutdownIfUSBPowerOff()
 
 void fadeToBlackAndShutdown()
 {
-  for (int i = 14; i > 6; i--)
+  for (int i = 90; i > 0; i=i-15)
   {
-    M5.Axp.ScreenBreath(i);             // 7-14 fade to black
+    M5.Axp.ScreenBreath(i);             // fade to black
     delay(100);
   }
 
