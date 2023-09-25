@@ -1039,6 +1039,8 @@ void getTempAndHumidityAndAirPressureBME280(float& h, float& t, float& p, float&
 
 // depth in metres, temperature in C, water pressure in Bar, Altitude in m
 void getDepth(float& d, float& d_t, float& d_p, float& d_a);
+bool getDepthAsync(float& d, float& d_t, float& d_p, float& d_a);
+bool useGetDepthAsync = false;
 
 void testForDualButtonPressAutoShutdownChange();
 
@@ -1452,6 +1454,9 @@ void loop()
 
   bool msgProcessed = processGPSMessageIfAvailable();
   
+  if (useGetDepthAsync)
+    getDepthAsync(depth, water_temperature, water_pressure, depth_altitude);
+  
   if (!msgProcessed)
   {
     // no gps message received, do a manual refresh of sensors and screen
@@ -1731,13 +1736,14 @@ void acquireAllSensorReadings()
       magnetic_heading = 0;
     }
   }
-
+  
   if (millis() > s_lastTempHumidityDisplayRefresh + s_tempHumidityUpdatePeriod)
   {
     s_lastTempHumidityDisplayRefresh = millis();
     //           getTempAndHumidity(humidity, temperature);
     getTempAndHumidityAndAirPressureBME280(humidity, temperature, air_pressure, pressure_altitude);
-    getDepth(depth, water_temperature, water_pressure, depth_altitude);
+    if (!useGetDepthAsync)
+      getDepth(depth, water_temperature, water_pressure, depth_altitude);
 
     getM5ImuSensorData(&imu_gyro_vector.x, &imu_gyro_vector.y, &imu_gyro_vector.z,
                      &imu_lin_acc_vector.x, &imu_lin_acc_vector.y, &imu_lin_acc_vector.z,
@@ -1809,9 +1815,13 @@ void checkForButtonPresses()
         switchToNextDisplayToShow();
       }
   
-      if (p_secondButton->wasReleasefor(1000)) // Journey Course Display: toggle uptime
+      if (p_secondButton->wasReleasefor(5000)) // Journey Course Display: toggle uptime
       {
         toggleUptimeGlobalDisplay();
+      }
+      else if (p_secondButton->wasReleasefor(1000)) // Journey Course Display: toggle uptime
+      {
+        toggleAsyncDepthDisplay();
       }
       break;
     }
@@ -2065,7 +2075,11 @@ void drawSurveyDisplay()
     M5.Lcd.setRotation(0);
     M5.Lcd.setCursor(15, 0);
     M5.Lcd.setTextSize(6);
-    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+
+    if (useGetDepthAsync)
+      M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+    else
+     M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
 
     // Display Cyan Depth
     M5.Lcd.printf("%.1f\n", depth);
@@ -3507,6 +3521,47 @@ std::string getCardinal(float b)
   }
 */
 
+uint32_t nextDepthReadCompleteTime = 0;
+const uint32_t depthReadCompletePeriod = 1000;
+
+bool getDepthAsync(float& d, float& d_t, float& d_p, float& d_a)
+{
+  bool dataAcquired = false;
+  if (!enableDepthSensor || !depthAvailable)
+  {
+    d = d_t = d_p = d_a = 0.0;
+    return dataAcquired;
+  }
+  
+  if (nextDepthReadCompleteTime > millis() && BlueRobotics_DepthSensor.readAsync() == MS5837::READ_COMPLETE)
+  {
+    nextDepthReadCompleteTime = millis() + depthReadCompletePeriod;
+    
+    float temp_d = BlueRobotics_DepthSensor.depth();
+  
+    if (temp_d > 100.0)  // reject outliers that seem to be occurring (of several 1000 metres)
+    {
+      return dataAcquired;
+    }
+    else if (temp_d < 0.0)
+    {
+      // correct for any negative number, eg -0.01 which will otherwise get cast to a large unsigned number
+      d = 0.0;
+    }
+    else
+    {
+      d = temp_d;
+    }
+  
+    d_t = BlueRobotics_DepthSensor.temperature();
+    d_p = BlueRobotics_DepthSensor.pressure() / 1000.0;
+    d_a = BlueRobotics_DepthSensor.altitude();
+    dataAcquired = true;
+  }
+
+  return dataAcquired;
+}
+
 // depth in metres, temperature in C, water pressure in Bar, Altitude in m
 void getDepth(float& d, float& d_t, float& d_p, float& d_a)
 {
@@ -3993,6 +4048,23 @@ void toggleUptimeGlobalDisplay()
   M5.Lcd.fillScreen(TFT_BLACK);
 }
 
+void toggleAsyncDepthDisplay()
+{
+  useGetDepthAsync = !useGetDepthAsync;
+
+  M5.Lcd.fillScreen(TFT_ORANGE);
+  M5.Lcd.setCursor(20, 10);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+  if (useGetDepthAsync)
+    M5.Lcd.println("Async Depth On");
+  else
+    M5.Lcd.println("Async Depth Off");
+
+  delay (2000);
+
+  M5.Lcd.fillScreen(TFT_BLACK);
+}
 
 void toggleUplinkMessageProcessAndSend()
 {
