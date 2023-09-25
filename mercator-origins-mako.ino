@@ -825,6 +825,9 @@ const float depth_correction = 0;
 //const uint32_t journey_calc_period = 500;    // in milliseconds
 //const uint32_t journey_min_dist = 0;          // in metres
 
+uint32_t next_global_status_display_update = 0;
+const uint32_t global_status_display_update_period = 250;   // ms
+
 const uint32_t journey_calc_period = 10000;    // in milliseconds
 const uint32_t journey_min_dist = 5;          // in metres
 
@@ -840,6 +843,7 @@ void refreshDirectionGraphic(float directionOfTravel, float headingToTarget);
 e_direction_metric directionMetric = COMPASS_HEADING;
 
 uint32_t fixCount = 0;
+uint32_t noFixCount = 0;
 uint32_t newPassedChecksum = 0;
 uint32_t newFailedChecksum = 0;
 uint32_t uplinkMessageCount = 0;
@@ -1015,6 +1019,9 @@ void updateButtonsAndBuzzer();
 const uint32_t CLEARED_FIX_TIME_STAMP = 0xF0000000;
 uint32_t latestFixTimeStamp = CLEARED_FIX_TIME_STAMP;
 uint32_t latestFixTimeStampStreamOk = 0;
+
+uint32_t latestNoFixTimeStamp = 0;
+uint32_t newNoFixCount = 0;
 
 // Magnetic heading calculation functions
 template <typename T> double calculateTiltCompensatedHeading(vector<T> from);
@@ -1248,6 +1255,7 @@ void setup()
     depth = 0;
   }
 
+  M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setRotation(1);
   M5.Lcd.setTextSize(2);
   M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -1470,7 +1478,7 @@ void loop()
     lastConsoleScreenRefresh = millis();
   }
 
-  refreshGlobalStatusDisplay();
+//  refreshGlobalStatusDisplay();
 
   refreshDiveTimer();
 
@@ -1483,7 +1491,13 @@ void loop()
 
 bool isGPSStreamOk()
 {
-  return (millis() - latestFixTimeStampStreamOk < minimumExpectedTimeBetweenFix);
+  return (millis() - latestFixTimeStampStreamOk < minimumExpectedTimeBetweenFix ||
+          millis() - latestNoFixTimeStamp < minimumExpectedTimeBetweenFix );
+}
+
+bool isLatestGPSMsgFix()
+{
+  return (latestFixTimeStampStreamOk > latestNoFixTimeStamp);
 }
 
 bool isInternetUploadOk()
@@ -1512,6 +1526,7 @@ bool processGPSMessageIfAvailable()
       if (gps.location.isValid())
       {
         uint32_t newFixCount = gps.sentencesWithFix();
+        uint32_t newNoFixCount = gps.sentencesWithNoFix();
         newPassedChecksum = gps.passedChecksum();
         newFailedChecksum = gps.failedChecksum();
         if (newFixCount > fixCount)
@@ -1526,7 +1541,11 @@ bool processGPSMessageIfAvailable()
 
           latestFixTimeStampStreamOk = latestFixTimeStamp = millis();
         }
-
+        else if (newNoFixCount > noFixCount)
+        {
+          latestNoFixTimeStamp = millis();
+        }
+        
         if (power_up_no_fix_byte_loop_count > -1)
         {
           // clear the onscreen counter that increments whilst attempting to get first valid location
@@ -2101,7 +2120,10 @@ void drawSurveyDisplay()
     M5.Lcd.setTextSize(3);
 
     if (isGPSStreamOk())
-      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+      if (isLatestGPSMsgFix())
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+      else
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_YELLOW);
     else
       M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
 
@@ -2673,8 +2695,14 @@ void refreshGlobalStatusDisplay()
     M5.Lcd.setTextSize(4);
     M5.Lcd.printf("No Fix\n");
     M5.Lcd.setCursor(110, 45);
-    M5.Lcd.printf("%c", activity_indicator[(++activity_count) % 4]);
-    delay(250); // no fix wait
+
+    if (millis() > next_global_status_display_update)
+    {
+      next_global_status_display_update = millis() + global_status_display_update_period;
+      activity_count = (activity_count+1) % 4;
+    }
+
+    M5.Lcd.printf("%c", activity_indicator[activity_count]);
   }
   else if (power_up_no_fix_byte_loop_count != -1)
   {
@@ -2686,8 +2714,14 @@ void refreshGlobalStatusDisplay()
     M5.Lcd.setTextSize(4);
     M5.Lcd.printf("No GPS\n");
     M5.Lcd.setCursor(110, 45);
-    M5.Lcd.printf("%c", activity_indicator[(++activity_count) % 4]);
-    delay(250); // no fix wait
+
+    if (millis() > next_global_status_display_update)
+    {
+      next_global_status_display_update = millis() + global_status_display_update_period;
+      activity_count = (activity_count+1) % 4;
+    }
+
+    M5.Lcd.printf("%c", activity_indicator[activity_count]);
   }
   else
   {
