@@ -510,7 +510,63 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
 };
 */
 
-// Dive 1 - Next dives after 12 September
+
+// Dive 1 - 29 September
+
+const uint8_t waypointCountDiveOne = 18;
+const uint8_t waypointExitDiveOne = 17;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+  [0] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "31P 6m", ._lat = 51.459766, ._long = -0.547347},
+  [2] = { ._label = "38B? Lifeboat 78d 6.5m", ._lat = 0, ._long = 0},
+  [3] = { ._label = "45B List Sharon 7.5m", ._lat = 51.4598098699702, ._long = -0.54670373432756},
+  [4] = { ._label = "46N Plane", ._lat = 51.459745, ._long = -0.546649},
+  [5] = { ._label = "49B Claymore 6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [6] = { ._label = "48N Holey Ship 191d by 47P 4.5m", ._lat = 0, ._long = 0},
+  [7] = { ._label = "47P 6m (next to Holey)", ._lat = 51.459399, ._long = -0.546594},
+  [8] = { ._label = "50cN Swim Through - crates", ._lat = 51.4592045, ._long = -0.545912625},
+  [9] = { ._label = "51B Orca Van", ._lat = 51.4591431428571, ._long = -0.545936857142857},
+  [10] = { ._label = "44N VW Van via reeds", ._lat = 51.459368, ._long = -0.546760142857143},
+  [11] = { ._label = "37N Dive Bell via reeds", ._lat = 51.4595419038462, ._long = -0.547160394230769},
+  [12] = { ._label = "39N London Black Cab", ._lat = 51.459729, ._long = -0.546992857142857},
+  [13] = { ._label = "35N Dragon Boat 7.5m", ._lat = 51.4599636666667, ._long = -0.547154333333333},
+  [14] = { ._label = "23N Traffic Lights 7m 143d from (21B)", ._lat = 51.4600558888889, ._long = -0.547677333333333},
+  [15] = { ._label = "18N Milk Float", ._lat = 51.4601745714286, ._long = -0.548058571428571},
+  [16] = { ._label = "10N Bus", ._lat = 51.460073, ._long = -0.548515},
+  [17] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
+};
+
+// Dive 2 - 29 September
+
+const uint8_t waypointCountDiveTwo = 17;
+const uint8_t waypointExitDiveTwo = 16;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "13B White Boat 7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [2] = { ._label = "06aN Caves Centre", ._lat = 51.460947625, ._long = -0.54878325},
+  [3] = { ._label = "12N Commer Van 6m", ._lat = 51.4613355909091, ._long = -0.548469727272727},
+  [4] = { ._label = "01N? Canoe 3m 340d fr Commer", ._lat = 0, ._long = 0},
+  [5] = { ._label = "05N Lightning 180d canoe", ._lat = 51.4605855, ._long = -0.548901666666667},
+  [6] = { ._label = "02N? Sub 4m 337d fr Lightning", ._lat = 0, ._long = 0},
+  [7] = { ._label = "06aN Caves Centre 60d fr Sub", ._lat = 51.460947625, ._long = -0.54878325},
+  [8] = { ._label = "01N? Canoe 3m 7d fr Sub", ._lat = 0, ._long = 0},
+  [9] = { ._label = "24N Half Die Hard Taxi", ._lat = 51.460773, ._long = -0.547620875},
+  [10] = { ._label = "27aB Wreck Site 6m", ._lat = 51.4604300973436, ._long = -0.547383365365033},
+  [11] = { ._label = "29B Dive/Spike Boat 7m", ._lat = 51.4601315714286, ._long = -0.547417857142857},
+  [12] = { ._label = "22B Lady of Kent Search Light 5m", ._lat = 51.4599185714286, ._long = -0.547681},
+  [13] = { ._label = "20N Sweet Bowl 311d from (22B)", ._lat = 51.46020025, ._long = -0.5479775},
+  [14] = { ._label = "18N Milk Float", ._lat = 51.4601745714286, ._long = -0.548058571428571},
+  [15] = { ._label = "10N Bus", ._lat = 51.460073, ._long = -0.548515},
+  [16] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
+};
+
+
+/*
+// Dive 1 - 26 September
 
 const uint8_t waypointCountDiveOne = 17;
 const uint8_t waypointExitDiveOne = 16;
@@ -536,7 +592,7 @@ navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
   [16] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461}
 };
 
-// Dive 2 - Next dives after 12 September
+// Dive 2 - 26 September
 
 const uint8_t waypointCountDiveTwo = 17;
 const uint8_t waypointExitDiveTwo = 16;
@@ -561,7 +617,7 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
   [15] = { ._label = "20N Sweet Bowl 311d from (22B)", ._lat = 51.46020025, ._long = -0.5479775},
   [16] = { ._label = "Z01 Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
 };
-
+*/
 /*
 // Dive 1 - 12th Sep Solo
 
@@ -861,9 +917,10 @@ uint16_t       minsToTriggerStopDiveTimer = 10;
 
 
 enum  e_mako_displays 
-  {SURVEY_DISPLAY, 
+  {
   NAV_COMPASS_DISPLAY, 
   NAV_COURSE_DISPLAY, 
+  SURVEY_DISPLAY, 
   LOCATION_DISPLAY, 
   JOURNEY_DISPLAY, 
   AUDIO_TEST_DISPLAY,
@@ -873,7 +930,7 @@ enum  e_mako_displays
   THIS_TARGET_DISPLAY_TEMP,
   AUDIO_ACTION_DISPLAY_TEMP};
   
-const e_mako_displays first_display_rotation = SURVEY_DISPLAY;
+const e_mako_displays first_display_rotation = NAV_COMPASS_DISPLAY;
 const e_mako_displays last_display_rotation = COMPASS_CALIBRATION_DISPLAY;
 
 e_mako_displays display_to_show = first_display_rotation;
