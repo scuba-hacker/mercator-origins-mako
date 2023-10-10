@@ -113,7 +113,7 @@ void rotateToNextGuidanceSounds()
   audioAction = AUDIO_ACTION_ROTATE_SOUND_SET;
 }
 
-#include "tb_display.h"
+// #include "tb_display.h"
 
 // screen Rotation values:
 // 1 = Button right
@@ -124,7 +124,7 @@ void rotateToNextGuidanceSounds()
 uint8_t tb_buffer_screen_orientation = 1;
 uint8_t tb_buffer_chosenTextSize = 2;
 
-#include <TinyGPS++.h>
+#include "TinyGPSPlusPlus_mercator.h"
 
 // OTA updates start
 #include <WiFi.h>
@@ -260,8 +260,8 @@ const uint32_t minimumExpectedTimeBetweenFix = 1000;  // 1 second
 #include <Adafruit_LSM303_Accel.h>  // Accelerometer
 //#include <Adafruit_AHTX0.h>         // Temp and Humidity Sensor Adafruit AHT20 - now in float
 #include <Adafruit_BME280.h>
-//#include <Adafruit_APDS9960.h>
-#include "MS5837.h" // water pressure sensor
+//#include <Adafruit_APDS9960.h> // gesture code currently commented out - not used
+#include "MS5837_mercator.h" // water pressure sensor
 
 const uint16_t SEALEVELPRESSURE_HPA = 1000.00;
 
@@ -1061,7 +1061,7 @@ Adafruit_LIS2MDL mag = Adafruit_LIS2MDL(12345);
 Adafruit_LSM303_Accel_Unified accel = Adafruit_LSM303_Accel_Unified(54321);
 // Adafruit_AHTX0 Adafruit_TempHumidity; // now in float
 Adafruit_BME280 Adafruit_TempHumidityPressure;
-// Adafruit_APDS9960 Adafruit_GestureSensor;
+// Adafruit_APDS9960 Adafruit_GestureSensor; // gesture code currently commented out - not used
 
 MS5837 BlueRobotics_DepthSensor;
 
