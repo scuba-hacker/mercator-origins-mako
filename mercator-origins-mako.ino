@@ -1841,8 +1841,7 @@ void refreshAndCalculatePositionalAttributes()
 
 void acquireAllSensorReadings()
 {        
-  const uint32_t minimum_sensor_read_time = 20; // milliseconds
-//  const uint32_t minimum_sensor_read_time = 0; // disable
+  const uint32_t minimum_sensor_read_time = 75; // ms
   
   uint32_t start_time = millis();
   uint32_t forced_standardised_sensor_read_time = start_time+minimum_sensor_read_time;
