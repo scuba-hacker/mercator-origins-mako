@@ -61,6 +61,8 @@ const uint8_t ESPNOW_NO_PEER_CHANNEL_FLAG = 0xFF;
 const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
 const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
 
+QueueHandle_t msgsReceivedQueue;
+
 // ************** Silky / Sounds variables **************
 
 bool soundsOn = true;
@@ -182,8 +184,8 @@ uint16_t max_sensor_acquisition_time = 0;
 
 bool enableESPNow = true;       //
 bool ESPNowActive = false;       // will be set to true on startup if set above - can be toggled through interface.
-bool isPairedWithAudioPod = false;    // starts off not paired
-bool isPairedWithTiger = false;    // starts off not paired
+bool isPairedWithAudioPod = false;
+bool isPairedWithTiger = false;
 
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 
@@ -1229,9 +1231,19 @@ void updateButtonsAndBuzzer()
   M5.Beep.update();
 }
 
+char rxQueueItemBuffer[256];
+const uint8_t queueLength=4;
+
 void setup()
 {
   M5.begin();
+
+  msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
+
+  if (writeLogToSerial && msgsReceivedQueue == NULL)
+  {
+    USB_SERIAL.println("Failed to create queue");
+  }
 
   switchDivePlan();   // initialise to dive one
 
@@ -1576,6 +1588,12 @@ void sendTestSerialBytesWhenReady()
   }
 }
 
+char tigerMessage[16]="";
+char tigerReeds[16]="";
+
+bool refreshTigerMsgShown = false;
+bool refreshTigerReedsShown = false;
+
 void loop()
 {
   if (autoShutdownOnNoUSBPower)
@@ -1592,6 +1610,33 @@ void loop()
       return;
     }
   */
+
+  if (msgsReceivedQueue)
+  {
+    if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
+    {
+      switch(rxQueueItemBuffer[0])
+      {
+        case 'T':   // From Tiger
+        {
+          strncpy(tigerMessage,rxQueueItemBuffer+1,sizeof(tigerMessage));
+          refreshTigerMsgShown = true;
+          break;
+        }
+        case 'R':   // Reed switch status
+        {
+          strncpy(tigerReeds,rxQueueItemBuffer+1,sizeof(tigerReeds));
+          refreshTigerReedsShown = true;
+          break;
+        }
+        
+        default:
+        {
+          
+        }
+      }
+    }
+  }
 
   bool msgProcessed = processGPSMessageIfAvailable();
   
@@ -2718,7 +2763,10 @@ void drawLocationStats()
   }
 
   M5.Lcd.setCursor(5, 68);
-  M5.Lcd.printf("T: (%d)\n%s", (int)(nextWaypoint - currentDiveWaypoints)+1, nextWaypoint->_label);
+
+  M5.Lcd.printf("Tiger: %s\n",tigerMessage);
+  M5.Lcd.printf("T-Reeds: %s",tigerReeds);
+//  M5.Lcd.printf("T: (%d)\n%s", (int)(nextWaypoint - currentDiveWaypoints)+1, nextWaypoint->_label);
 }
 
 void drawJourneyStats()
@@ -4286,18 +4334,21 @@ void notifySoundsOnOffChanged()
 bool connectESPNow()
 {
   //Set device in STA mode to begin with
-  WiFi.mode(WIFI_STA);
+// MBJ Removed  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP);
   
   if (writeLogToSerial)
     USB_SERIAL.println("ESPNow/Basic/Master Example");
     
   esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
   
-  // This is the mac address of the Master in Station Mode
+  configESPNowDeviceAP();
+  
+  // This is the mac address of the Master in AP Mode
   if (writeLogToSerial)
   {
-    USB_SERIAL.print("STA MAC: "); USB_SERIAL.println(WiFi.macAddress());
-    USB_SERIAL.print("STA CHANNEL "); USB_SERIAL.println(WiFi.channel());
+    USB_SERIAL.print("AP MAC: "); USB_SERIAL.println(WiFi.softAPmacAddress());
+    USB_SERIAL.print("AP CHANNEL "); USB_SERIAL.println(WiFi.channel());
   }
 
   // Init ESPNow with a fallback logic
@@ -4308,11 +4359,33 @@ bool connectESPNow()
     // Once ESPNow is successfully Init, we will register for Send CB to
     // get the status of Trasnmitted packet
     esp_now_register_send_cb(OnESPNowDataSent);
+    esp_now_register_recv_cb(OnESPNowDataRecv);
   }
   
   return result;
 }
 
+void configESPNowDeviceAP() 
+{
+  String Prefix = "Mako:";
+  String Mac = WiFi.macAddress();
+  String SSID = Prefix + Mac;
+  String Password = "123456789";
+  bool result = WiFi.softAP(SSID.c_str(), Password.c_str(), ESPNOW_CHANNEL, 0);
+
+  if (writeLogToSerial)
+  {
+    if (!result) 
+    {
+      USB_SERIAL.println("AP Config failed.");
+    } 
+    else 
+    {
+      USB_SERIAL.printf("AP Config Success. Broadcasting with AP: %s\n",String(SSID).c_str());
+      USB_SERIAL.printf("WiFi Channel: %d\n",WiFi.channel());
+    }
+  }  
+}
 bool connectWiFiNoOTA(const char* _ssid, const char* _password, const char* label, uint32_t timeout)
 {
   bool forcedCancellation = false;
@@ -4781,9 +4854,21 @@ bool TeardownESPNow()
   return result;
 }
 
+void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) 
+{
+  if (writeLogToSerial)
+  {
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+    USB_SERIAL.printf("Last Packet Recv from: %s\n",macStr);
+    USB_SERIAL.printf("Last Packet Recv 1st Byte: '%c'\n",*data);
+    USB_SERIAL.printf("Last Packet Recv Length: %d\n",data_len);
+    USB_SERIAL.println((char*)data);
+  }
 
-
-char ESPNowDiagBuffer[256];
+  xQueueSend(msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue
+}
 
 // callback when data is sent from Master to Peer
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) 
@@ -4796,43 +4881,6 @@ void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
   {
     ESPNowMessagesFailedToDeliver++;
   }
-
-  /*
-  char macStr[18];
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  USB_SERIAL.print("Last Packet Sent to: "); USB_SERIAL.println(macStr);
-  USB_SERIAL.print("Last Packet Send Status: ");
-
-  USB_SERIAL.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-
-  if (status == ESP_NOW_SEND_SUCCESS)
-  {
-    ESPNowMessagesDelivered++;
-    sprintf(ESPNowDiagBuffer, "Del Ok %hu ", ESPNowMessagesDelivered);
-    // flash RED LED once
-    digitalWrite(RED_LED_GPIO, LOW);
-    delay(500);
-    digitalWrite(RED_LED_GPIO, HIGH);
-  }
-  else
-  {
-    ESPNowMessagesFailedToDeliver++;
-    sprintf(ESPNowDiagBuffer, "Del Fail %hu ", ESPNowMessagesFailedToDeliver);
-    // flash RED LED three times
-    digitalWrite(RED_LED_GPIO, LOW);
-    delay(500);
-    digitalWrite(RED_LED_GPIO, HIGH);
-    delay(500);
-    digitalWrite(RED_LED_GPIO, LOW);
-    delay(500);
-    digitalWrite(RED_LED_GPIO, HIGH);
-    delay(500);
-    digitalWrite(RED_LED_GPIO, LOW);
-    delay(500);
-    digitalWrite(RED_LED_GPIO, HIGH);
-  }
-*/
 }
 
 // Scan for peers in AP mode
