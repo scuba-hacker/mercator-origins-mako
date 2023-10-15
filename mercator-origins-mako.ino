@@ -3658,8 +3658,8 @@ std::string getCardinal(float b)
   }
 */
 
-uint32_t nextDepthReadCompleteTime = 0;
-const uint32_t depthReadCompletePeriod = 1000;
+uint32_t nextDepthReadCompleteTime = 0xFFFFFFFF;
+const uint32_t depthReadCompletePeriod = 10000;
 
 bool getDepthAsync(float& d, float& d_t, float& d_p, float& d_a)
 {
@@ -3669,10 +3669,12 @@ bool getDepthAsync(float& d, float& d_t, float& d_p, float& d_a)
     d = d_t = d_p = d_a = 0.0;
     return dataAcquired;
   }
+
+  uint32_t timeNow = millis();
   
-  if (nextDepthReadCompleteTime > millis() && BlueRobotics_DepthSensor.readAsync() == MS5837::READ_COMPLETE)
+  if (nextDepthReadCompleteTime > timeNow && BlueRobotics_DepthSensor.readAsync() == MS5837::READ_COMPLETE)
   {
-    nextDepthReadCompleteTime = millis() + depthReadCompletePeriod;
+    nextDepthReadCompleteTime = timeNow + depthReadCompletePeriod;
     
     float temp_d = BlueRobotics_DepthSensor.depth();
   
@@ -3695,7 +3697,7 @@ bool getDepthAsync(float& d, float& d_t, float& d_p, float& d_a)
     d_a = BlueRobotics_DepthSensor.altitude();
     dataAcquired = true;
   }
-
+  
   return dataAcquired;
 }
 

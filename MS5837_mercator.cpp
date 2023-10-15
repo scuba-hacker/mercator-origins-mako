@@ -89,7 +89,7 @@ MS5837::read_state MS5837::readAsync()
 	
 	return read_sensor_state;
 }
-/*
+
 void MS5837::read()
 {
 	requestD1Conversion();
@@ -98,7 +98,6 @@ void MS5837::read()
 	delay(MS5837_CONVERSION_PERIOD);
 	retrieveD2ConversionAndCalculate();	
 }
-*/
 
 void MS5837::requestD1Conversion()
 {
@@ -155,6 +154,7 @@ void MS5837::retrieveD2ConversionAndCalculate()
 	}
 }
 
+/*
 void MS5837::read() {
 	// Request D1 conversion
 	Wire.beginTransmission(MS5837_ADDR);
@@ -192,6 +192,7 @@ void MS5837::read() {
 
 	calculate();
 }
+*/
 
 void MS5837::calculate() {
 	// Given C1-C6 and D1, D2, calculated TEMP and P
@@ -254,10 +255,12 @@ void MS5837::calculate() {
 		P = (((D1*SENS2)/2097152l-OFF2)/32768l); 
 	} else {
 		P = (((D1*SENS2)/2097152l-OFF2)/8192l);
+
+//    P = (P/10.04 + float(millis() % 2581))*10.04;
 	}
 }
 
-float MS5837::pressure(float conversion) {
+float MS5837::pressure(float conversion) {    
     if ( _model == MS5837_02BA ) {
         return P*conversion/100.0f;
     }
