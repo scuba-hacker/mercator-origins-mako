@@ -1590,9 +1590,11 @@ void sendTestSerialBytesWhenReady()
 
 char tigerMessage[16]="";
 char tigerReeds[16]="";
+char silkyMessage[16]="";
 
 bool refreshTigerMsgShown = false;
 bool refreshTigerReedsShown = false;
+bool refreshSilkyMsgShown = false;
 
 void loop()
 {
@@ -1617,19 +1619,24 @@ void loop()
     {
       switch(rxQueueItemBuffer[0])
       {
-        case 'T':   // From Tiger
+        case 'T':   // Test message From Tiger
         {
           strncpy(tigerMessage,rxQueueItemBuffer+1,sizeof(tigerMessage));
           refreshTigerMsgShown = true;
           break;
         }
-        case 'R':   // Reed switch status
+        case 'R':   // Reed switch status from Tiger
         {
           strncpy(tigerReeds,rxQueueItemBuffer+1,sizeof(tigerReeds));
           refreshTigerReedsShown = true;
           break;
+        }        
+        case 'S':   // Test message from Silky
+        {
+          strncpy(silkyMessage,rxQueueItemBuffer+1,sizeof(silkyMessage));
+          refreshSilkyMsgShown = true;
+          break;
         }
-        
         default:
         {
           
@@ -2763,9 +2770,14 @@ void drawLocationStats()
   }
 
   M5.Lcd.setCursor(5, 68);
-
   M5.Lcd.printf("Tiger: %s\n",tigerMessage);
-  M5.Lcd.printf("T-Reeds: %s",tigerReeds);
+  
+  M5.Lcd.setCursor(5, 85);
+  M5.Lcd.printf("T-Reeds: %s\n",tigerReeds);
+  
+  M5.Lcd.setCursor(5, 102);
+  M5.Lcd.printf("Silky: %s",silkyMessage);
+  
 //  M5.Lcd.printf("T: (%d)\n%s", (int)(nextWaypoint - currentDiveWaypoints)+1, nextWaypoint->_label);
 }
 
@@ -4888,7 +4900,7 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
 {
   bool peerFound = false;
   
-  M5.Lcd.println("Scanning Networks...");
+  M5.Lcd.println("Scanning   Networks...");
   int8_t scanResults = WiFi.scanNetworks();
   M5.Lcd.println("Complete");
   
