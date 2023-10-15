@@ -16,10 +16,52 @@
 #include <esp_now.h>
 #include <esp_wifi.h> // only for esp_wifi_set_channel()
 
+//#define INCLUDE_TWITTER_AT_COMPILE_TIME
+//#define INCLUDE_SMTP_AT_COMPILE_TIME
+//#define INCLUDE_QUBITRO_AT_COMPILE_TIME
+
+// ************** Mako Control Parameters **************
+
+bool goProButtonsPrimaryControl = true;
+
+const bool enableDigitalCompass = true;
+const bool enableTiltCompensation = true;
+const bool enableSmoothedCompass = true;
+
+const bool enableHumiditySensor = true;
+const bool enableDepthSensor = true;
+const bool enableIMUSensor = true;
+
+bool enableUplinkComms = true;  // can be toggled through UI
+
+const bool enableNavigationGraphics = true;
+const bool enableNavigationTargeting = true;
+const bool enableRecentCourseCalculation = true;
+bool enableGlobalUptimeDisplay = false;    // adds a timer to compass heading display so can see if a crash/reboot has happened
+
+bool enableWifiAtStartup = false;   // set to true only if no espnow at startup
+bool enableESPNowAtStartup = true;  // set to true only if no wifi at startup
+
+bool otaActiveListening = false; // OTA updates toggle
+bool otaFirstInit = false;       // Start OTA at boot if WiFi enabled
+
+// ************** ESPNow variables **************
+
 uint16_t ESPNowMessagesDelivered = 0;
 uint16_t ESPNowMessagesFailedToDeliver = 0;
 
-uint8_t ESPNow_data_to_send = 0;
+esp_now_peer_info_t ESPNow_audio_pod_peer;
+esp_now_peer_info_t ESPNow_tiger_peer;
+
+const int RESET_ESPNOW_SEND_RESULT = 0xFF;
+esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
+
+const uint8_t ESPNOW_CHANNEL = 1;
+const uint8_t ESPNOW_NO_PEER_CHANNEL_FLAG = 0xFF;
+const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
+const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
+
+// ************** Silky / Sounds variables **************
 
 bool soundsOn = true;
 const uint8_t defaultSilkyVolume = 5;     // no software gain applied - best for sounds recorded at optimal amplitude.
@@ -27,21 +69,10 @@ const uint8_t minSilkyVolume = 1;         // quietest
 const uint8_t maxSilkyVolume = 5;
 uint8_t silkyVolume = defaultSilkyVolume;
 
-esp_now_peer_info_t ESPNow_audio_pod;
-
-const int RESET_ESPNOW_SEND_RESULT = 0xFF;
-esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
-
-
 enum e_audio_action {AUDIO_ACTION_NONE, AUDIO_ACTION_NEXT_SOUND, AUDIO_ACTION_CYCLE_VOLUME, AUDIO_ACTION_SOUNDS_TOGGLE, 
 AUDIO_ACTION_PLAYBACK_TOGGLE, AUDIO_ACTION_STOP_PLAYBACK, AUDIO_ACTION_SET_VOLUME, AUDIO_ACTION_ROTATE_SOUND_SET};
 
 e_audio_action audioAction = AUDIO_ACTION_NONE;
-
-const uint8_t ESPNOW_CHANNEL = 1;
-const uint8_t ESPNOW_NO_PEER_CHANNEL_FLAG = 0xFF;
-const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
-const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
 
 const uint8_t SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK = (uint8_t)'A'; // 500 ms
 const uint8_t SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP = (uint8_t)'B'; // 2000 ms
@@ -113,16 +144,13 @@ void rotateToNextGuidanceSounds()
   audioAction = AUDIO_ACTION_ROTATE_SOUND_SET;
 }
 
-// #include "tb_display.h"
-
 // screen Rotation values:
 // 1 = Button right
 // 2 = Button above
 // 3 = Button left
 // 4 = Button below
 
-uint8_t tb_buffer_screen_orientation = 1;
-uint8_t tb_buffer_chosenTextSize = 2;
+uint8_t initialTextSize = 2;
 
 #include "TinyGPSPlusPlus_mercator.h"
 
@@ -148,39 +176,18 @@ void sendFullUplinkTelemetryMessage();
 
 const e_display_brightness ScreenBrightness = BRIGHTEST_DISPLAY;
 const e_uplinkMode uplinkMode = SEND_FULL_UPLINK_MSG;
-bool enableUplinkComms = true;  // can be toggled through UI
-const bool enableDigitalCompass = true;
-const bool enableTiltCompensation = false;
-const bool enableSmoothedCompass = true;
-const bool enableHumiditySensor = true;
-const bool enableDepthSensor = true;
-const bool enableIMUSensor = true;
-const bool enableNavigationGraphics = true;
-const bool enableNavigationTargeting = true;
-const bool enableRecentCourseCalculation = true;
-bool enableGlobalUptimeDisplay = false;    // adds a timer to compass heading display so can see if a crash/reboot has happened
-
-bool enableWifiAtStartup = false;   // set to true only if no espnow at startup
-bool enableESPNowAtStartup = true;  // set to true only if no wifi at startup
-
-bool otaActiveListening = false; // OTA updates toggle
-bool otaFirstInit = false;       // Start OTA at boot if WiFi enabled
 
 uint16_t sensor_acquisition_time = 0;
 uint16_t max_sensor_acquisition_time = 0;
 
 bool enableESPNow = true;       //
 bool ESPNowActive = false;       // will be set to true on startup if set above - can be toggled through interface.
-
 bool isPairedWithAudioPod = false;    // starts off not paired
+bool isPairedWithTiger = false;    // starts off not paired
 
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 
 // compilation switches
-
-//#define INCLUDE_TWITTER_AT_COMPILE_TIME
-//#define INCLUDE_SMTP_AT_COMPILE_TIME
-//#define INCLUDE_QUBITRO_AT_COMPILE_TIME
 
 void (*fp_sendUplinkMessage)() =  ( uplinkMode == SEND_NO_UPLINK_MSG ? &sendNoUplinkTelemetryMessages :
                                   ( uplinkMode == SEND_TEST_UPLINK_MSG ? &sendUplinkTestMessage :
@@ -938,6 +945,8 @@ void switchDivePlan()
     currentDiveWaypoints = diveTwoWaypoints;
     nextWaypoint = currentDiveWaypoints;
   }
+  
+  publishToTigerCurrentTarget(nextWaypoint->_label);
 }
 
 enum e_way_marker {BLACKOUT_MARKER, GO_ANTICLOCKWISE_MARKER, GO_AHEAD_MARKER, GO_CLOCKWISE_MARKER, GO_TURN_AROUND_MARKER, UNKNOWN_MARKER};
@@ -1200,8 +1209,6 @@ bool autoShutdownOnNoUSBPower = true;
 
 bool enableButtonTestMode = false;
 
-bool goProButtonsPrimaryControl = true;
-
 void readAndTestGoProButtons();
 
 void shutdownIfUSBPowerOff();
@@ -1231,11 +1238,7 @@ void setup()
   pinMode(IR_LED_GPS_TX_PIN, OUTPUT);
   digitalWrite(IR_LED_GPS_TX_PIN, HIGH); // switch off
 
-  M5.Lcd.setTextSize(tb_buffer_chosenTextSize);
-
-//  tb_display_init(tb_buffer_screen_orientation, M5.Lcd.textsize);
-//  tb_display_print_String("Mercator Origins - Text Buffer Enabled\n");
-//  delay(1000);
+  M5.Lcd.setTextSize(initialTextSize);
 
   if (enableIMUSensor)
   {
@@ -2124,6 +2127,7 @@ void checkForButtonPresses()
         // don't change target - remind diver of current target
         display_to_revert_to = display_to_show;
         display_to_show = THIS_TARGET_DISPLAY_TEMP;
+
         M5.Lcd.fillScreen(TFT_BLACK);
       }
         
@@ -2537,6 +2541,8 @@ void drawCourseSection()
 
 void drawNextTarget()
 {
+  // shows current target, just changes the prefix text to Next rather than Towards
+  // can be consolidated with drawThisTarget  
   M5.Lcd.setTextSize(3);
   M5.Lcd.setTextFont(1);
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -2548,6 +2554,7 @@ void drawNextTarget()
   {
     showTempDisplayEndTime = disabledTempDisplayEndTime;
     display_to_show = display_to_revert_to;
+    publishToTigerCurrentTarget(nextWaypoint->_label);
     M5.Lcd.fillScreen(TFT_BLACK);
   }
 }
@@ -2565,6 +2572,7 @@ void drawThisTarget()
   {
     showTempDisplayEndTime = disabledTempDisplayEndTime;
     display_to_show = display_to_revert_to;
+    publishToTigerCurrentTarget(nextWaypoint->_label);
     M5.Lcd.fillScreen(TFT_BLACK);
   }
 }
@@ -3839,14 +3847,6 @@ void getTempAndHumidityAndAirPressureBME280(float& h, float& t, float& p, float&
   }
 }
 
-void toggleSound()
-{
- if (soundsOn)
-    soundsOn = false;
-  else
-    soundsOn = true;  
-}
-
 void notifyESPNowNotActive()
 {
   M5.Lcd.fillScreen(TFT_RED);
@@ -3874,100 +3874,6 @@ void displayESPNowSendDataResult(const esp_err_t result)
     M5.Lcd.println("ESPNOW Unknown Error");
 }
 
-void publishToSilkyPlayAudioGuidance(enum e_soundFX sound)
-{
-  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL && sound != SFX_NONE)
-  {
-    ESPNow_data_to_send = (uint8_t)sound;
-    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
-    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
-
-    audioAction = AUDIO_ACTION_NONE;
-  }
-}
-
-void publishToSilkySkipToNextTrack()
-{
-  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
-  {
-    // Send byte command to Silky to say skip to next track
-    ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_NEXT_TRACK;
-    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
-    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
-
-    audioAction = AUDIO_ACTION_NEXT_SOUND;
-  }
-}
-
-void publishToSilkyCycleVolumeUp()
-{
-  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
-  {
-    if (silkyVolume == maxSilkyVolume)
-      silkyVolume = minSilkyVolume;
-    else
-      silkyVolume++;
-
-    publishToSilkySetVolume(silkyVolume);
-
-    audioAction = AUDIO_ACTION_CYCLE_VOLUME;
-/*
-    // Send byte command to Silky to say skip to next track
-    ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_CYCLE_VOLUME_UP;
-    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
-    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
-    audioAction = AUDIO_ACTION_CYCLE_VOLUME;
-    */
-  }
-}
-
-void publishToSilkySetVolume(const uint8_t newVolume)
-{
-  if (ESPNowActive && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
-  {
-    silkyVolume = newVolume;
-      
-    // Send byte command to Silky to say set volume to silkyVolume
-    uint16_t ESPNow_word_to_send = ((uint16_t)silkyVolume << 8) | (uint16_t)SILKY_ESPNOW_COMMAND_SET_VOLUME;
-    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
-    ESPNowSendResult = esp_now_send(peer_addr, (uint8_t*)&ESPNow_word_to_send, sizeof(ESPNow_word_to_send));
-    audioAction = AUDIO_ACTION_NONE;  // done on startup and no screen change needed.
-  }
-}
-
-void publishToSilkyTogglePlayback()
-{
-  if (ESPNowActive && soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
-  {
-    // Send byte command to Silky to say skip to next track
-    ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK;
-    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
-    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
-    audioAction = AUDIO_ACTION_PLAYBACK_TOGGLE;
-  }
-}
-
-void publishToSilkyStopPlayback()
-{
-  if (ESPNowActive && !soundsOn && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
-  {
-    // Send byte command to Silky to say skip to next track
-    ESPNow_data_to_send = SILKY_ESPNOW_COMMAND_STOP_PLAYBACK;
-    const uint8_t *peer_addr = ESPNow_audio_pod.peer_addr;
-    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_data_to_send, sizeof(ESPNow_data_to_send));
-    audioAction = AUDIO_ACTION_STOP_PLAYBACK;
-  }
-}
-
-void notifySoundsOnOffChanged()
-{
-  if (ESPNowActive && ESPNow_audio_pod.channel == ESPNOW_CHANNEL)
-  {
-    ESPNowSendResult = ESP_OK;
-    audioAction = AUDIO_ACTION_SOUNDS_TOGGLE;
-  }
-}
-
 void toggleESPNowActive()
 {
   if (enableESPNow)
@@ -3976,8 +3882,6 @@ void toggleESPNowActive()
     M5.Lcd.setCursor(0, 0);
     M5.Lcd.setTextSize(2);
 
-    bool audioPodFound = false;
-    
     bool disabledWiFi = false;
     
     if (ESPNowActive == false)
@@ -4005,28 +3909,36 @@ void toggleESPNowActive()
         if (writeLogToSerial)
           USB_SERIAL.println("Wifi\nDisabled\nESPNow\nEnabled");
 
-        isPairedWithAudioPod = pairWithPeer(ESPNow_audio_pod,"AudioPod");
+        isPairedWithAudioPod = pairWithPeer(ESPNow_audio_pod_peer,"AudioPod",1); // attempt to peer once
         
         if (isPairedWithAudioPod)
         {
-          audioPodFound = true;
           // set Silky volume to default.
           publishToSilkySetVolume(defaultSilkyVolume);
         }
-        else
+
+        isPairedWithTiger = pairWithPeer(ESPNow_tiger_peer,"Tiger",5); // attempt to peer 5 times - Tiger has to get NTP time at startup
+
+        if (isPairedWithTiger)
         {
-          TeardownESPNow();
-          ESPNowActive = false;
-    
-          M5.Lcd.println("   ESPNow\nDisabled");
-          if (writeLogToSerial)
-            USB_SERIAL.println("ESPNow Disabled");
+          // send message to tiger to give first target
+          publishToTigerCurrentTarget(nextWaypoint->_label);
         }
       }
       else
       {
-        ESPNowActive = false;
         isPairedWithAudioPod = false;
+        isPairedWithTiger = false;
+      }
+
+      if (!isPairedWithAudioPod && !isPairedWithTiger)
+      {
+        TeardownESPNow();
+        ESPNowActive = false;
+  
+        M5.Lcd.println("   ESPNow\nDisabled");
+        if (writeLogToSerial)
+          USB_SERIAL.println("ESPNow Disabled");
       }
     }
     else
@@ -4036,6 +3948,7 @@ void toggleESPNowActive()
  
       ESPNowActive = false;
       isPairedWithAudioPod = false;
+      isPairedWithTiger = false;
 
       M5.Lcd.println("ESPNow Disabled");
       
@@ -4255,6 +4168,119 @@ void fadeToBlackAndShutdown()
   }
 
   M5.Axp.PowerOff();
+}
+
+// *************************** Tiger ESPNow Send Functions ******************
+
+char tiger_espnow_buffer[256];
+
+void publishToTigerCurrentTarget(const char* currentTarget)
+{     
+  if (isPairedWithTiger && ESPNow_tiger_peer.channel == ESPNOW_CHANNEL)
+  {
+    memset(tiger_espnow_buffer,0,sizeof(tiger_espnow_buffer));
+    tiger_espnow_buffer[0] = 'c';  // command c= current target
+    tiger_espnow_buffer[1] = '\0';
+    strncpy(tiger_espnow_buffer+1,currentTarget,sizeof(tiger_espnow_buffer)-2);
+    ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, strlen(tiger_espnow_buffer)+1);
+  }
+}
+
+// *************************** Silky / Sound ESPNow Send Functions ******************
+
+void toggleSound()
+{
+ if (soundsOn)
+    soundsOn = false;
+  else
+    soundsOn = true;  
+}
+
+void publishToSilkyPlayAudioGuidance(enum e_soundFX sound)
+{
+  if (isPairedWithAudioPod && soundsOn && ESPNow_audio_pod_peer.channel == ESPNOW_CHANNEL && sound != SFX_NONE)
+  {
+    uint8_t ESPNow_AudioPod_data_to_send = (uint8_t)sound;
+    const uint8_t *peer_addr = ESPNow_audio_pod_peer.peer_addr;
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_AudioPod_data_to_send, sizeof(ESPNow_AudioPod_data_to_send));
+
+    audioAction = AUDIO_ACTION_NONE;
+  }
+}
+
+void publishToSilkySkipToNextTrack()
+{
+  if (isPairedWithAudioPod && soundsOn && ESPNow_audio_pod_peer.channel == ESPNOW_CHANNEL)
+  {
+    // Send byte command to Silky to say skip to next track
+    uint8_t ESPNow_AudioPod_data_to_send = SILKY_ESPNOW_COMMAND_NEXT_TRACK;
+    const uint8_t *peer_addr = ESPNow_audio_pod_peer.peer_addr;
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_AudioPod_data_to_send, sizeof(ESPNow_AudioPod_data_to_send));
+
+    audioAction = AUDIO_ACTION_NEXT_SOUND;
+  }
+}
+
+void publishToSilkyCycleVolumeUp()
+{
+  if (isPairedWithAudioPod && soundsOn && ESPNow_audio_pod_peer.channel == ESPNOW_CHANNEL)
+  {
+    if (silkyVolume == maxSilkyVolume)
+      silkyVolume = minSilkyVolume;
+    else
+      silkyVolume++;
+
+    publishToSilkySetVolume(silkyVolume);
+
+    audioAction = AUDIO_ACTION_CYCLE_VOLUME;
+  }
+}
+
+void publishToSilkySetVolume(const uint8_t newVolume)
+{
+  if (isPairedWithAudioPod && ESPNow_audio_pod_peer.channel == ESPNOW_CHANNEL)
+  {
+    silkyVolume = newVolume;
+      
+    // Send byte command to Silky to say set volume to silkyVolume
+    uint16_t ESPNow_word_to_send = ((uint16_t)silkyVolume << 8) | (uint16_t)SILKY_ESPNOW_COMMAND_SET_VOLUME;
+    const uint8_t *peer_addr = ESPNow_audio_pod_peer.peer_addr;
+    ESPNowSendResult = esp_now_send(peer_addr, (uint8_t*)&ESPNow_word_to_send, sizeof(ESPNow_word_to_send));
+    audioAction = AUDIO_ACTION_NONE;  // done on startup and no screen change needed.
+  }
+}
+
+void publishToSilkyTogglePlayback()
+{
+  if (isPairedWithAudioPod && soundsOn && ESPNow_audio_pod_peer.channel == ESPNOW_CHANNEL)
+  {
+    // Send byte command to Silky to say skip to next track
+    uint8_t ESPNow_AudioPod_data_to_send = SILKY_ESPNOW_COMMAND_TOGGLE_PLAYBACK;
+    const uint8_t *peer_addr = ESPNow_audio_pod_peer.peer_addr;
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_AudioPod_data_to_send, sizeof(ESPNow_AudioPod_data_to_send));
+    audioAction = AUDIO_ACTION_PLAYBACK_TOGGLE;
+  }
+}
+
+void publishToSilkyStopPlayback()
+{
+  if (isPairedWithAudioPod && !soundsOn && ESPNow_audio_pod_peer.channel == ESPNOW_CHANNEL)
+  {
+    // Send byte command to Silky to say skip to next track
+    uint8_t ESPNow_AudioPod_data_to_send  = SILKY_ESPNOW_COMMAND_STOP_PLAYBACK;
+    const uint8_t *peer_addr = ESPNow_audio_pod_peer.peer_addr;
+    ESPNowSendResult = esp_now_send(peer_addr, &ESPNow_AudioPod_data_to_send, sizeof(ESPNow_AudioPod_data_to_send));
+    audioAction = AUDIO_ACTION_STOP_PLAYBACK;
+  }
+}
+
+void notifySoundsOnOffChanged()
+{
+  if (isPairedWithAudioPod && ESPNow_audio_pod_peer.channel == ESPNOW_CHANNEL)
+  {
+    ESPNowSendResult = ESP_OK;
+    audioAction = AUDIO_ACTION_SOUNDS_TOGGLE;
+  }
 }
 
 bool connectESPNow()
@@ -4716,6 +4742,9 @@ void sendLocationByEmail()
 }
 #endif
 
+// *************************** ESPNow Functions ***************************
+
+
 // Init ESP Now with fallback
 bool InitESPNow() 
 {
@@ -4803,8 +4832,6 @@ void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
     delay(500);
     digitalWrite(RED_LED_GPIO, HIGH);
   }
-
-//  tb_display_print_String(ESPNowDiagBuffer);
 */
 }
 
@@ -4813,16 +4840,18 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
 {
   bool peerFound = false;
   
+  M5.Lcd.println("Scanning Networks...");
   int8_t scanResults = WiFi.scanNetworks();
-  // reset on each scan
- 
+  M5.Lcd.println("Complete");
+  
+  // reset on each scan 
   memset(&peer, 0, sizeof(peer));
 
   if (writeLogToSerial)
     USB_SERIAL.println("");
 
   if (scanResults == 0) 
-  {    
+  {   
     if (writeLogToSerial)
       USB_SERIAL.println("No WiFi devices in AP Mode found");
 
@@ -4878,6 +4907,8 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
         peer.channel = ESPNOW_CHANNEL; // pick a channel
         peer.encrypt = 0; // no encryption
 
+        peer.priv = (void*)peerSSIDPrefix;   // distinguish between different peers
+
         peerFound = true;
         // we are planning to have only one slave in this example;
         // Hence, break after we find one, to be a bit efficient
@@ -4905,10 +4936,8 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
   return peerFound;
 }
 
-
-bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
+bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, int maxAttempts)
 {
-  int maxAttempts = 1;
   bool isPaired = false;
   while(maxAttempts-- && !isPaired)
   {
@@ -4918,18 +4947,19 @@ bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
     if (result && peer.channel == ESPNOW_CHANNEL)
     { 
       isPaired = ESPNowManagePeer(peer);
-      M5.Lcd.println("Pair ok");
+      M5.Lcd.printf("%s Pair ok\n",peerSSIDPrefix);
     }
     else
     {
       peer.channel = ESPNOW_NO_PEER_CHANNEL_FLAG;
-      M5.Lcd.println("Pair fail");
+      M5.Lcd.printf("%s Pair fail\n",peerSSIDPrefix);
     }
   }
 
-  delay(500);
+  delay(1000);
   
   M5.Lcd.fillScreen(TFT_BLACK);
+  M5.Lcd.setCursor(0,0);
   
   return isPaired;
 }
