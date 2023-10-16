@@ -31,6 +31,7 @@ const bool enableSmoothedCompass = true;
 const bool enableHumiditySensor = true;
 const bool enableDepthSensor = true;
 const bool enableIMUSensor = true;
+const bool enableColourSensor = true;
 
 bool enableUplinkComms = true;  // can be toggled through UI
 
@@ -46,13 +47,6 @@ bool otaActiveListening = false; // OTA updates toggle
 bool otaFirstInit = false;       // Start OTA at boot if WiFi enabled
 
 // ************** ESPNow variables **************
-
-uint16_t ESPNowMessagesDelivered = 0;
-uint16_t ESPNowMessagesFailedToDeliver = 0;
-
-esp_now_peer_info_t ESPNow_audio_pod_peer;
-esp_now_peer_info_t ESPNow_tiger_peer;
-
 const int RESET_ESPNOW_SEND_RESULT = 0xFF;
 esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
 
@@ -61,7 +55,21 @@ const uint8_t ESPNOW_NO_PEER_CHANNEL_FLAG = 0xFF;
 const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
 const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
 
+uint16_t ESPNowMessagesDelivered = 0;
+uint16_t ESPNowMessagesFailedToDeliver = 0;
+
+esp_now_peer_info_t ESPNow_audio_pod_peer;
+esp_now_peer_info_t ESPNow_tiger_peer;
+
 QueueHandle_t msgsReceivedQueue;
+
+char tigerMessage[16]="";
+char tigerReeds[16]="";
+char silkyMessage[16]="";
+
+bool refreshTigerMsgShown = false;
+bool refreshTigerReedsShown = false;
+bool refreshSilkyMsgShown = false;
 
 // ************** Silky / Sounds variables **************
 
@@ -269,7 +277,7 @@ const uint32_t minimumExpectedTimeBetweenFix = 1000;  // 1 second
 #include <Adafruit_LSM303_Accel.h>  // Accelerometer
 //#include <Adafruit_AHTX0.h>         // Temp and Humidity Sensor Adafruit AHT20 - now in float
 #include <Adafruit_BME280.h>
-//#include <Adafruit_APDS9960.h> // gesture code currently commented out - not used
+#include <Adafruit_APDS9960.h> // colour sensor
 #include "MS5837_mercator.h" // water pressure sensor
 
 const uint16_t SEALEVELPRESSURE_HPA = 1000.00;
@@ -961,13 +969,8 @@ float mag_accel_x = 0, mag_accel_y = 0, mag_accel_z = 0;
 float mag_tesla_x = 0, mag_tesla_y = 0, mag_tesla_z = 0;
 float humidity = 0, temperature = 0, air_pressure = 0, pressure_altitude = 0, depth = 0, water_temperature = 0, water_pressure = 0, depth_altitude = 0;
 uint16_t red_sensor = 0, green_sensor = 0, blue_sensor = 0, clear_sensor = 0;
-uint8_t gesture = 255, proximity = 255;
-char gesture_symbol = '-';
 const float pressure_correction = 0;  // mbar, calibrated against Braggs Wunderground - not used now
 const float depth_correction = 0;
-
-//const uint32_t journey_calc_period = 500;    // in milliseconds
-//const uint32_t journey_min_dist = 0;          // in metres
 
 uint32_t next_global_status_display_update = 0;
 const uint32_t global_status_display_update_period = 250;   // ms
@@ -978,8 +981,8 @@ const uint32_t journey_min_dist = 5;          // in metres
 uint32_t last_journey_commit_time = 0;
 uint32_t journey_clear_period = 15000;    // clear the journey info after 15 secs inactivity
 uint32_t lastWayMarkerChangeTimestamp = 0;
-e_way_marker lastWayMarker = BLACKOUT_MARKER;    // SHOULD BE ENUM
-e_way_marker newWayMarker = BLACKOUT_MARKER;     // SHOULD BE ENUM
+e_way_marker lastWayMarker = BLACKOUT_MARKER;
+e_way_marker newWayMarker = BLACKOUT_MARKER;
 bool blackout_journey_no_movement = true;
 uint8_t activity_count = 0;
 void refreshDirectionGraphic(float directionOfTravel, float headingToTarget);
@@ -1070,13 +1073,23 @@ uint8_t nextUplinkMessage = 0;
 
 Adafruit_LIS2MDL mag = Adafruit_LIS2MDL(12345);
 Adafruit_LSM303_Accel_Unified accel = Adafruit_LSM303_Accel_Unified(54321);
-// Adafruit_AHTX0 Adafruit_TempHumidity; // now in float
 Adafruit_BME280 Adafruit_TempHumidityPressure;
-// Adafruit_APDS9960 Adafruit_GestureSensor; // gesture code currently commented out - not used
+Adafruit_APDS9960 Adafruit_ColourSensor;
+uint16_t red_light=0,green_light=0,blue_light=0,clear_light=0;
+
+
+uint32_t s_lastColourDisplayRefresh = 0;
+const uint32_t s_colourUpdatePeriod = 200; // time between each colour sensor read
+const uint8_t maxColourMeasurements=20;
+uint16_t colourMeasurements[maxColourMeasurements];
+uint8_t colourIndex=0;
+
+const uint32_t readLightTimeWait = 6000;
+uint32_t nextLightReadTime = 0;
+uint8_t brightLightEvents = 0;
+bool sendBrightLightEventToTiger = false;
 
 MS5837 BlueRobotics_DepthSensor;
-
-const uint8_t GESTURE_INT_PIN = 3;
 
 template <typename T> struct vector
 {
@@ -1119,7 +1132,7 @@ void getM5ImuSensorData(float* gyro_x, float* gyro_y, float* gyro_z,
 
 bool compassAvailable = true;
 bool humidityAvailable = true;
-bool gestureAvailable = true;
+bool colourSensorAvailable = true;
 bool depthAvailable = true;
 bool imuAvailable = true;
 
@@ -1372,26 +1385,21 @@ void setup()
     compassAvailable = false;
   }
 
-  /*
-    if (!Adafruit_GestureSensor.begin())
+  if (enableColourSensor)
+  {
+    if (!Adafruit_ColourSensor.begin())
     {
-      USB_SERIAL.println("Unable to init APDS9960 gesture");
-      M5.Lcd.println("APDS9960 gesture bad");
-      gestureAvailable=false;
+      USB_SERIAL.println("Unable to init APDS9960 colour");
+      M5.Lcd.println("APDS9960 colour bad");
+      colourSensorAvailable=false;
     }
     else
     {
-      Adafruit_GestureSensor.enableColor(true);
-    //    Adafruit_GestureSensor.enableProximity(true);
-    //    Adafruit_GestureSensor.enableGesture(true);
-
-      //set the interrupt threshold to fire when proximity reading goes above 175
-    //    Adafruit_GestureSensor.setProximityInterruptThreshold(0, 175);
-
-      //enable the proximity interrupt
-    //    Adafruit_GestureSensor.enableProximityInterrupt();
+      Adafruit_ColourSensor.enableColor(true);
+      colourSensorAvailable=true;
     }
-  */
+  }
+  
   // do depth centre initialisation here
   if (enableDepthSensor)
   {
@@ -1513,37 +1521,12 @@ void loop_no_gps()
 
   getMagHeadingTiltCompensated(magnetic_heading);
 
-  //  uint16_t r, g, b, c;
-
-  //wait for color data to be ready
-  //  while(!Adafruit_GestureSensor.colorDataReady())
-  //  delay(5);
-
-  //  Adafruit_GestureSensor.getColorData(&red_sensor, &green_sensor, &blue_sensor, &clear_sensor);
-
-  /*
-    gesture = Adafruit_GestureSensor.readGesture(); // APDS9960_UP, APDS9960_DOWN, APDS9960_LEFT, APDS9960_RIGHT
-
-    if(gesture == APDS9960_DOWN)  gesture_symbol='v';
-    if(gesture == APDS9960_UP)    gesture_symbol='^';
-    if(gesture == APDS9960_LEFT)  gesture_symbol='<';
-    if(gesture == APDS9960_RIGHT) gesture_symbol='>';
-
-    //print the proximity reading when the interrupt pin goes low
-    if(!digitalRead(GESTURE_INT_PIN)){
-      USB_SERIAL.println(Adafruit_GestureSensor.readProximity());
-
-      //clear the interrupt
-      Adafruit_GestureSensor.clearInterrupt();
-    }
-  */
-
   M5.Lcd.setRotation(1);
   M5.Lcd.setTextSize(4);
   M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
   M5.Lcd.setCursor(0, 0);
 
-  M5.Lcd.printf("  %.2f m  \n", depth); // was gesture char
+  M5.Lcd.printf("  %.2f m  \n", depth);
 
   M5.Lcd.setTextSize(1);
   M5.Lcd.println("");
@@ -1587,14 +1570,6 @@ void sendTestSerialBytesWhenReady()
     float_serial.write("UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU");
   }
 }
-
-char tigerMessage[16]="";
-char tigerReeds[16]="";
-char silkyMessage[16]="";
-
-bool refreshTigerMsgShown = false;
-bool refreshTigerReedsShown = false;
-bool refreshSilkyMsgShown = false;
 
 void loop()
 {
@@ -1665,6 +1640,11 @@ void loop()
   else
   {
      lastConsoleScreenRefresh = millis();
+  }
+
+  if (sendBrightLightEventToTiger)
+  {
+    publishToTigerBrightLightEvent();
   }
 
   checkForButtonPresses();
@@ -1941,6 +1921,37 @@ void acquireAllSensorReadings()
                      &imu_lin_acc_vector.x, &imu_lin_acc_vector.y, &imu_lin_acc_vector.z,
                      &imu_rot_acc_vector.x, &imu_rot_acc_vector.y, &imu_rot_acc_vector.z,
                      &imu_temperature);
+  }
+
+  if (millis() > s_lastColourDisplayRefresh + s_colourUpdatePeriod && millis() > nextLightReadTime)
+  {
+    s_lastColourDisplayRefresh = millis();
+    if (colourSensorAvailable && Adafruit_ColourSensor.colorDataReady())
+    {
+      Adafruit_ColourSensor.getColorData(&red_light, &green_light, &blue_light, &clear_light);
+    }
+    colourMeasurements[colourIndex++] = clear_light;
+    colourIndex = colourIndex % maxColourMeasurements;
+
+    uint16_t threshold = 4000;
+    uint8_t samplesAtOrAboveThreshold=0;
+    uint8_t samplesBelowThreshold=0;
+
+    for (uint8_t i = 0; i < maxColourMeasurements; i++)
+    {
+      if (colourMeasurements[i] < threshold)
+        samplesBelowThreshold++;
+      else
+        samplesAtOrAboveThreshold++;
+    }
+
+    if (samplesAtOrAboveThreshold >= 4 && samplesAtOrAboveThreshold <= 10) // between 800ms and 2000ms in a 4000ms (200x20) period.
+    {
+      brightLightEvents++;
+      sendBrightLightEventToTiger = true;
+      memset(colourMeasurements,0,sizeof(colourMeasurements));
+      nextLightReadTime = millis() + readLightTimeWait;
+    }
   }
 
   // equalise acquisition time to be set to a minimum
@@ -2770,7 +2781,8 @@ void drawLocationStats()
   }
 
   M5.Lcd.setCursor(5, 68);
-  M5.Lcd.printf("Tiger: %s\n",tigerMessage);
+ // M5.Lcd.printf("Tiger: %s\n",tigerMessage);
+  M5.Lcd.printf("Colour: %u %hu   \n",brightLightEvents, clear_light);
   
   M5.Lcd.setCursor(5, 85);
   M5.Lcd.printf("T-Reeds: %s\n",tigerReeds);
@@ -4233,6 +4245,19 @@ void fadeToBlackAndShutdown()
 // *************************** Tiger ESPNow Send Functions ******************
 
 char tiger_espnow_buffer[256];
+
+void publishToTigerBrightLightEvent()
+{
+  if (isPairedWithTiger && ESPNow_tiger_peer.channel == ESPNOW_CHANNEL)
+  {
+    memset(tiger_espnow_buffer,0,sizeof(tiger_espnow_buffer));
+    tiger_espnow_buffer[0] = 'l';  // command l = light event
+    tiger_espnow_buffer[1] = '\0';
+    ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, strlen(tiger_espnow_buffer)+1);
+  }
+
+  sendBrightLightEventToTiger = false;
+}
 
 void publishToTigerCurrentTarget(const char* currentTarget)
 {     
