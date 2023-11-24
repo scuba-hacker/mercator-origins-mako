@@ -40,6 +40,8 @@ const bool enableNavigationTargeting = true;
 const bool enableRecentCourseCalculation = true;
 bool enableGlobalUptimeDisplay = false;    // adds a timer to compass heading display so can see if a crash/reboot has happened
 
+bool enableRealTimePublishTigerLocation=true;
+
 bool enableWifiAtStartup = false;   // set to true only if no espnow at startup
 bool enableESPNowAtStartup = true;  // set to true only if no wifi at startup
 
@@ -246,6 +248,11 @@ uint8_t telemetry_message_count = 0;
 const uint32_t console_screen_refresh_minimum_interval = 500; // milliseconds
 uint32_t lastConsoleScreenRefresh = 0;
 bool requestConsoleScreenRefresh = false;
+
+uint32_t map_screen_refresh_minimum_interval = 1000; // milliseconds
+uint32_t nextMapScreenRefresh = 0;
+bool requestMapScreenRefresh = false;
+
 
 #define USB_SERIAL Serial
 
@@ -529,6 +536,221 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
   [21] = { ._label = "*2u Cafe Jetty", ._lat = 51.460015, ._long = -0.548316}
 };
 */
+/*
+// Dives week of 17 October
+const uint8_t waypointCountDiveOne = 20;
+const uint8_t waypointExitDiveOne = 19;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+  [0] = { ._label = "Cafe\nJetty", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "Est.\nCave\nBuoy", ._lat = 51.4608337, ._long = -0.54883 },
+  [2] = { ._label = "Canoe\nEst. New", ._lat = 51.4620649, ._long = -0.5489528},
+  [3] = { ._label = "Canoe\nNW", ._lat = 51.4621272, ._long = -0.5490348},
+  [4] = { ._label = "Canoe\nN", ._lat = 51.4621644, ._long = -0.5489503},
+  [5] = { ._label = "Canoe\nNE", ._lat = 51.4621235, ._long = -0.5488664},
+  [6] = { ._label = "Canoe\nE", ._lat = 51.4620654, ._long = -0.5488102},
+  [7] = { ._label = "Canoe\nSE", ._lat = 51.4620027, ._long = -0.5488524},
+  [8] = { ._label = "Canoe\nS", ._lat = 51.4619701, ._long = -0.5489477},
+  [9] = { ._label = "Canoe\nSW", ._lat = 51.4619939, ._long = -0.5490341},
+  [10] = { ._label = "Canoe\nW", ._lat = 51.4620666, ._long = -0.5490951},
+  [11] = { ._label = "Canoe\nNW2", ._lat = 51.4621272, ._long = -0.5490348},
+  [12] = { ._label = "Canoe\nNE2", ._lat = 51.4621235, ._long = -0.5488664},
+  [13] = { ._label = "Canoe\nSE2", ._lat = 51.4620027, ._long = -0.5488524},
+  [14] = { ._label = "Canoe\nSW2", ._lat = 51.4619939, ._long = -0.5490341},
+  [15] = { ._label = "Canoe\nE2", ._lat = 51.4620654, ._long = -0.5488102},
+  [16] = { ._label = "Canoe\nN2", ._lat = 51.4621644, ._long = -0.5489503},
+  [17] = { ._label = "Canoe\nW2", ._lat = 51.4620666, ._long = -0.5490951},
+  [18] = { ._label = "Canoe\nS2", ._lat = 51.4619701, ._long = -0.5489477},
+  [19] = { ._label = "Cafe\nJetty", ._lat = 51.460015, ._long = -0.548316}
+};
+
+// Dives week of 17 October
+
+const uint8_t waypointCountDiveTwo = 20;
+const uint8_t waypointExitDiveTwo = 19;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "Cafe\nJetty", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "Est.\nCave\nBuoy", ._lat = 51.4608337, ._long = -0.54883 },
+  [2] = { ._label = "Sub\nEst.\nNew", ._lat = 51.4609545, ._long = -0.5491566},
+  [3] = { ._label = "Sub\nW", ._lat = 51.4609559, ._long = -0.5492975},
+  [4] = { ._label = "Sub\nNW", ._lat =  51.461031, ._long = -0.5492317},
+  [5] = { ._label = "Sub\nN", ._lat = 51.4610407, ._long = -0.5491586},
+  [6] = { ._label = "Sub\nNE", ._lat = 51.4610231, ._long = -0.5490675},
+  [7] = { ._label = "Sub\nE", ._lat = 51.4609554, ._long = -0.5490171},
+  [8] = { ._label = "Sub\nSE", ._lat =  51.460884, ._long = -0.5490634},
+  [9] = { ._label = "Sub\nS", ._lat = 51.4608669, ._long = -0.5491586},
+  [10] = { ._label = "Sub\nSW", ._lat = 51.4608861, ._long = -0.5492377},
+  [11] = { ._label = "Sub\nW2", ._lat = 51.4609559, ._long = -0.5492975},
+  [12] = { ._label = "Sub\nN2", ._lat = 51.4610407, ._long = -0.5491586},
+  [13] = { ._label = "Sub\nE2", ._lat = 51.4609554, ._long = -0.5490171},
+  [14] = { ._label = "Sub\nS2", ._lat = 51.4608669, ._long = -0.5491586},
+  [15] = { ._label = "Sub\nNW2", ._lat =  51.461031, ._long = -0.5492317},
+  [16] = { ._label = "Sub\nNE2", ._lat = 51.4610231, ._long = -0.5490675},
+  [17] = { ._label = "Sub\nSE2", ._lat =  51.460884, ._long = -0.5490634},
+  [18] = { ._label = "Sub\nSW2", ._lat = 51.4608861, ._long = -0.5492377},
+  [19] = { ._label = "Cafe\nJetty", ._lat = 51.460015, ._long = -0.548316}
+};
+*/
+
+// Dive 1 - 3 Nov
+const uint8_t waypointCountDiveOne = 29;
+const uint8_t waypointExitDiveOne = 28;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+[0] = { ._label = "Z01\n\nCafe\nJetty", ._lat = 51.460015, ._long = -0.548316},
+
+  [1] = { ._label = "10N\n\nBus\n\n2m", ._lat = 51.460073, ._long = -0.548515},
+
+   [2] = { ._label = "04N Spitfire Car 6m", ._lat = 51.4601028571429, ._long = -0.54883835},
+  
+  [3] = { ._label = "X02 Quarry Machine in Reeds", ._lat = 51.460434, ._long = -0.548921},
+  [4] = { ._label = "X07 Boat with Chain Links", ._lat = 51.4600385714286, ._long = -0.548724142857143},
+  [5] = { ._label = "03N Scimitar Car 5.5m", ._lat = 51.460347, ._long = -0.5489195},
+  [6] = { ._label = "05N The Lightning Boat 5.5m", ._lat = 51.4605855, ._long = -0.548901666666667},  
+
+  [7] = { ._label = "Sub\nEst.New\n4m", ._lat = 51.4609545, ._long = -0.5491566},
+  [8] = { ._label = "Sub\nW 4m", ._lat = 51.4609559, ._long = -0.5492975},
+  [9] = { ._label = "Sub\nN 4m", ._lat = 51.4610407, ._long = -0.5491586},
+  [10] = { ._label = "Sub\nE 4m", ._lat = 51.4609554, ._long = -0.5490171},
+  [11] = { ._label = "Sub\nS 4m", ._lat = 51.4608669, ._long = -0.5491586},
+  [12] = { ._label = "Sub\nEst.New\n4m", ._lat = 51.4609545, ._long = -0.5491566}, 
+  [13] = { ._label = "Est.\nCave\nBuoy", ._lat = 51.4608337, ._long = -0.54883 },
+
+  [14] = { ._label = "Canoe\nEst.New\n3m", ._lat = 51.4620649, ._long = -0.5489528},
+  [15] = { ._label = "Canoe\nW 3m", ._lat = 51.4620666, ._long = -0.5490951},
+  [16] = { ._label = "Canoe\nN 3m", ._lat = 51.4621644, ._long = -0.5489503},
+  [17] = { ._label = "Canoe\nE 3m", ._lat = 51.4620654, ._long = -0.5488102},
+  [18] = { ._label = "Canoe\nS 3m", ._lat = 51.4619701, ._long = -0.5489477},
+  [19] = { ._label = "Canoe\nEst.New\3m", ._lat = 51.4620649, ._long = -0.5489528},
+  
+  [20] = { ._label = "12N\n\nCommer\nVan\n\n6m", ._lat = 51.4613355909091, ._long = -0.548469727272727},  
+  [21] = { ._label = "24N\n\nHalf\nDie\nHard\nTaxi 8m", ._lat = 51.460773, ._long = -0.547620875},
+  [22] = { ._label = "27aB\n\nWreck\nSite\n\n6m", ._lat = 51.4604300973436, ._long = -0.547383365365033},
+  [23] = { ._label = "43N\n\nThorpe\nOrange\nBoat\n\n5.5m", ._lat = 51.4602073333333, ._long = -0.546787666666667},
+  [24] = { ._label = "35N\n\nDragon\nBoat\n\n7.5m", ._lat = 51.4599636666667, ._long = -0.547154333333333},
+  [25] = { ._label = "46N\n\nPlane\n\n6m", ._lat = 51.459745, ._long = -0.546649},
+  [26] = { ._label = "50a\nSwim\nThrough\nno\ncrates\n\n6m", ._lat = 51.45914367, ._long = -0.546032333},
+  [27] = { ._label = "37N\n\nDive\nBell\n\n4m", ._lat = 51.4594757058824, ._long = -0.547087117647059},
+  [28] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461},
+};
+
+// Dive 2 - 3 Nov
+
+const uint8_t waypointCountDiveTwo = 15;
+const uint8_t waypointExitDiveTwo = 14;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "Z02\n\nMid\nJetty", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "44N\nVW\nCamper\nVan and\nSeahors\n\n5.5m", ._lat = 51.459368, ._long = -0.546760142857143},
+  [2] = { ._label = "51B\n\nOrca\nVan\n\n5.5m", ._lat = 51.4591431428571, ._long = -0.545936857142857},
+  [3] = { ._label = "50a\nSwim\nThrough\nno\ncrates\n\n6m", ._lat = 51.45914367, ._long = -0.546032333},
+  [4] = { ._label = "49B\n\nClay-\n   more\n\n6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [5] = { ._label = "46N\n\nPlane\n\n6m", ._lat = 51.459745, ._long = -0.546649},
+  [6] = { ._label = "41N\n\nTin\nCabin\nBoat\n\n7m", ._lat = 51.459676625, ._long = -0.5468125},
+  [7] = { ._label = "39N\n\nLondon\nBlack\nCab\n\n7m", ._lat = 51.459729, ._long = -0.546992857142857},
+  [8] = { ._label = "38B\n\nLife\nBoat\n\n6.5m", ._lat = 51.459839375, ._long = -0.5469307},
+  [9] = { ._label = "35N\n\nDragon\nBoat\n\n7.5m", ._lat = 51.4599636666667, ._long = -0.547154333333333},
+  [10] = { ._label = "25N\n\nBoat In\nA Hole\n\n7m", ._lat = 51.4599545, ._long = -0.54755475},
+  [11] = { ._label = "22B\nLady of\nKent\nSearch\nLight\n\n5m", ._lat = 51.4599185714286, ._long = -0.547681},
+  [12] = { ._label = "20N\n\nSkittle\nSweet\nBowl\n\n5.5m", ._lat = 51.46020025, ._long = -0.5479775},
+  [13] = { ._label = "18N\n\nMilk\nFloat\n\n6.5m", ._lat = 51.4601745714286, ._long = -0.548058571428571},
+  [14] = { ._label = "10N\n\nBus\n\n2m", ._lat = 51.460073, ._long = -0.548515}
+};
+
+/*
+// Dive 1 - 24 October
+const uint8_t waypointCountDiveOne = 40;
+const uint8_t waypointExitDiveOne = 39;
+
+navigationWaypoint diveOneWaypoints[waypointCountDiveOne] =
+{
+  [0] = { ._label = "Z01\n\nCafe\nJetty", ._lat = 51.460015, ._long = -0.548316},
+  [1] = { ._label = "20N\n\nSkittle\nSweet\nBowl\n\n5.5m", ._lat = 51.46020025, ._long = -0.5479775},
+  [2] = { ._label = "21B\n\nSticky\nUp Boat\n\n5m", ._lat = 51.4602514070597, ._long = -0.54789158281982},
+  [3] = { ._label = "19N\n\nChicken\nHutch\nBoat\n\n6.5m", ._lat = 51.4604027142857, ._long = -0.54804},
+  [4] = { ._label = "13B\n\nWhite\nBoat\n\n7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [5] = { ._label = "05N\n\nLight-\n   ning\nBoat\n\n5.5m", ._lat = 51.4605855, ._long = -0.548901666666667},
+  [6] = { ._label = "Sub\nEst.New\n4m", ._lat = 51.4609545, ._long = -0.5491566},
+  [7] = { ._label = "Sub\nW 4m", ._lat = 51.4609559, ._long = -0.5492975},
+  [8] = { ._label = "Sub\nN 4m", ._lat = 51.4610407, ._long = -0.5491586},
+  [9] = { ._label = "Sub\nE 4m", ._lat = 51.4609554, ._long = -0.5490171},
+  [10] = { ._label = "Sub\nS 4m", ._lat = 51.4608669, ._long = -0.5491586},
+  [11] = { ._label = "Sub\nEst.New\n4m", ._lat = 51.4609545, ._long = -0.5491566}, 
+  [12] = { ._label = "Est.\nCave\nBuoy", ._lat = 51.4608337, ._long = -0.54883 },
+  [13] = { ._label = "06aN\n\nCaves\nCentre", ._lat = 51.460947625, ._long = -0.54878325},
+  [14] = { ._label = "12N\n\nCommer\nVan\n\n6m", ._lat = 51.4613355909091, ._long = -0.548469727272727},
+  [15] = { ._label = "Canoe\nEst.New\n3m", ._lat = 51.4620649, ._long = -0.5489528},
+  [16] = { ._label = "Canoe\nW 3m", ._lat = 51.4620666, ._long = -0.5490951},
+  [17] = { ._label = "Canoe\nN 3m", ._lat = 51.4621644, ._long = -0.5489503},
+  [18] = { ._label = "Canoe\nE 3m", ._lat = 51.4620654, ._long = -0.5488102},
+  [19] = { ._label = "Canoe\nS 3m", ._lat = 51.4619701, ._long = -0.5489477},
+  [20] = { ._label = "Canoe\nEst.New\3m", ._lat = 51.4620649, ._long = -0.5489528},
+  [21] = { ._label = "24N\n\nHalf\nDie\nHard\nTaxi 8m", ._lat = 51.460773, ._long = -0.547620875},
+  [22] = { ._label = "27aB\n\nWreck\nSite\n\n6m", ._lat = 51.4604300973436, ._long = -0.547383365365033},
+  [23] = { ._label = "40N\n\nRIB\nBoat\n\n6m", ._lat = 51.460236, ._long = -0.546847571428571},
+  [24] = { ._label = "43N\n\nThorpe\nOrange\nBoat\n\n5.5m", ._lat = 51.4602073333333, ._long = -0.546787666666667},
+  [25] = { ._label = "38B\n\nLife\nBoat\n\n6.5m", ._lat = 51.459839375, ._long = -0.5469307},
+  [26] = { ._label = "45B\n\nListing\nSharon\n\n7.5m", ._lat = 51.4598098699702, ._long = -0.54670373432756},
+  [27] = { ._label = "46N\n\nPlane\n\n6m", ._lat = 51.459745, ._long = -0.546649},
+  [28] = { ._label = "49B\n\nClay-\n   more\n\n6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [29] = { ._label = "48N\n\nHoley\nShip\n\n4.5m", ._lat = 51.4594384444444, ._long = -0.5465238},
+  [30] = { ._label = "50a\nSwim\nThrough\nno\ncrates\n\n6m", ._lat = 51.45914367, ._long = -0.546032333},
+  [31] = { ._label = "44N\nVW\nCamper\nVan and\nSeahors\n\n5.5m", ._lat = 51.459368, ._long = -0.546760142857143},
+  [32] = { ._label = "37N\n\nDive\nBell\n\n4m", ._lat = 51.4594757058824, ._long = -0.547087117647059},
+  [33] = { ._label = "30B\nWhite\nDay\nboat by\nplatform\n6m", ._lat = 51.4598131428572, ._long = -0.547380285714286},
+  [34] = { ._label = "35N\n\nDragon\nBoat\n\n7.5m", ._lat = 51.4599636666667, ._long = -0.547154333333333},
+  [35] = { ._label = "29B\n\nDive/\nSpike\nBoat\n\n7m", ._lat = 51.4601315714286, ._long = -0.547417857142857},
+  [36] = { ._label = "23N\n\nTraffic\nLights\n\n7m", ._lat = 51.4600558888889, ._long = -0.547677333333333},
+  [37] = { ._label = "18N\n\nMilk\nFloat\n\n6.5m", ._lat = 51.4601745714286, ._long = -0.548058571428571},
+  [38] = { ._label = "10N\n\nBus\n\n2m", ._lat = 51.460073, ._long = -0.548515},
+  [39] = { ._label = "Z01\n\nCafe\nJetty", ._lat = 51.460015, ._long = -0.548316}  
+};
+
+// Dive 2 - 24 October
+
+const uint8_t waypointCountDiveTwo = 26;
+const uint8_t waypointExitDiveTwo = 25;
+
+navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
+{
+  [0] = { ._label = "Z02\n\nMid\nJetty", ._lat = 51.459547, ._long = -0.547461},
+  [1] = { ._label = "Z03\n\nOld\nJetty", ._lat = 51.459166, ._long = -0.546999333333333},
+  [2] = { ._label = "44N\nVW\nCamper\nVan and\nSeahors\n\n5.5m", ._lat = 51.459368, ._long = -0.546760142857143},
+  [3] = { ._label = "51B\n\nOrca\nVan\n\n5.5m", ._lat = 51.4591431428571, ._long = -0.545936857142857},
+  [4] = { ._label = "50a\nSwim\nThrough\nno\ncrates\n\n6m", ._lat = 51.45914367, ._long = -0.546032333},
+  [5] = { ._label = "49B\n\nClay-\n   more\n\n6.5m", ._lat = 51.459634435324, ._long = -0.54646635372985},
+  [6] = { ._label = "46N\n\nPlane\n\n6m", ._lat = 51.459745, ._long = -0.546649},
+  [7] = { ._label = "41N\n\nTin\nCabin\nBoat\n\n7m", ._lat = 51.459676625, ._long = -0.5468125},
+  [8] = { ._label = "39N\n\nLondon\nBlack\nCab\n\n7m", ._lat = 51.459729, ._long = -0.546992857142857},
+  [9] = { ._label = "38B\n\nLife\nBoat\n\n6.5m", ._lat = 51.459839375, ._long = -0.5469307},
+  [10] = { ._label = "35N\n\nDragon\nBoat\n\n7.5m", ._lat = 51.4599636666667, ._long = -0.547154333333333},
+  [11] = { ._label = "25N\n\nBoat In\nA Hole\n\n7m", ._lat = 51.4599545, ._long = -0.54755475},
+  [12] = { ._label = "22B\nLady of\nKent\nSearch\nLight\n\n5m", ._lat = 51.4599185714286, ._long = -0.547681},
+  [13] = { ._label = "23N\n\nTraffic\nLights\n\n7m", ._lat = 51.4600558888889, ._long = -0.547677333333333},
+  [14] = { ._label = "27bB\n\n4 Wreck\nSite\n\n6m", ._lat = 51.46043825, ._long = -0.547208},
+  [15] = { ._label = "19N\n\nChicken\nHutch\nBoat\n\n6.5m", ._lat = 51.4604027142857, ._long = -0.54804},
+  [16] = { ._label = "16P\n\nPorta-\ncabin\n\n8m", ._lat = 51.46034, ._long = -0.548173},
+  [17] = { ._label = "13B\n\nWhite\nBoat\n\n7m", ._lat = 51.4605198169044, ._long = -0.548421667307919},
+  [18] = { ._label = "08B\n\nThe\nHole\n\n14m", ._lat = 51.4604301666667, ._long = -0.548688166666667},
+  [19] = { ._label = "Sub\nEst.New\n4m", ._lat = 51.4609545, ._long = -0.5491566},
+  [20] = { ._label = "06cN\n\nRed\nIsis\nBike @ Caves", ._lat = 51.460898, ._long = -0.548701333},
+  [21] = { ._label = "05N\n\nLight-\n   ning\nBoat\n\n5.5m", ._lat = 51.4605855, ._long = -0.548901666666667},
+  [22] = { ._label = "03N\n\nScimi-\n    tar\nCar\n\n5.5m", ._lat = 51.460347, ._long = -0.5489195},
+  [23] = { ._label = "04N\n\nSpit-\n   fire\nCar\n\n6m", ._lat = 51.4601028571429, ._long = -0.54883835},
+  [24] = { ._label = "10N\n\nBus\n\n2m", ._lat = 51.460073, ._long = -0.548515},
+  [25] = { ._label = "Z01\n\nCafe\nJetty", ._lat = 51.460015, ._long = -0.548316}
+};
+*/
+
+
+
+/*
+
 
 // Dive 1 - 5 October
 
@@ -603,6 +825,7 @@ navigationWaypoint diveTwoWaypoints[waypointCountDiveTwo] =
   [24] = { ._label = "10N\n\nBus\n\n2m", ._lat = 51.460073, ._long = -0.548515},
   [25] = { ._label = "Z01\n\nCafe\nJetty", ._lat = 51.460015, ._long = -0.548316}
 };
+*/
 
 /*
 // Dive 1 - 29 September
@@ -1655,6 +1878,15 @@ void loop()
     refreshConsoleScreen();
     lastConsoleScreenRefresh = millis();
   }
+
+  if (millis() > nextMapScreenRefresh || requestMapScreenRefresh)
+  {
+    if (enableRealTimePublishTigerLocation)   // enable by entering the show lat/long screen
+      publishToTigerLocationAndTarget(nextWaypoint->_label);
+
+    nextMapScreenRefresh = millis() + map_screen_refresh_minimum_interval;
+    requestMapScreenRefresh = false;
+  }  
 
 //  refreshGlobalStatusDisplay();
 
@@ -2741,6 +2973,26 @@ void drawLatLong()
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
   if (millis() > showTempDisplayEndTime)
   {
+    publishToTigerLocationAndTarget(nextWaypoint->_label);
+
+    if (enableRealTimePublishTigerLocation)
+    {
+      if (map_screen_refresh_minimum_interval == 1000)
+      {
+        map_screen_refresh_minimum_interval = 3000;   // on 1st time through, switch from 1 sec to 3 secs
+      }
+      else    // on 2nd time through, disable real time publisj
+      {
+        enableRealTimePublishTigerLocation = false;
+      }
+    }
+    else
+    {
+      // revert back to original settings
+      enableRealTimePublishTigerLocation=true;
+      map_screen_refresh_minimum_interval = 1000;
+    }
+    
     showTempDisplayEndTime = disabledTempDisplayEndTime;
     display_to_show = display_to_revert_to;
     M5.Lcd.fillScreen(TFT_BLACK);
@@ -4268,6 +4520,34 @@ void publishToTigerCurrentTarget(const char* currentTarget)
     tiger_espnow_buffer[1] = '\0';
     strncpy(tiger_espnow_buffer+1,currentTarget,sizeof(tiger_espnow_buffer)-2);
     ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, strlen(tiger_espnow_buffer)+1);
+  }
+}
+
+void publishToTigerLocationAndTarget(const char* currentTarget)
+{     
+  if (isPairedWithTiger && ESPNow_tiger_peer.channel == ESPNOW_CHANNEL)
+  {
+    memset(tiger_espnow_buffer,0,sizeof(tiger_espnow_buffer));
+    
+    tiger_espnow_buffer[0] = 'X';  // command c=target code, location, heading, target
+
+    const int maxCodeLength = 6;
+
+    const char* endOfCode=currentTarget;
+    while (endOfCode - currentTarget < maxCodeLength && std::isalnum(*endOfCode++));
+
+    if (endOfCode != currentTarget)
+      memcpy(tiger_espnow_buffer+1,currentTarget,endOfCode - currentTarget - 1);
+  
+    tiger_espnow_buffer[endOfCode - currentTarget + 1] = '\0';
+
+    memcpy(tiger_espnow_buffer+8,&Lat,8);
+    memcpy(tiger_espnow_buffer+16,&Lng,8);
+    memcpy(tiger_espnow_buffer+24,&magnetic_heading,8);
+
+    strncpy(tiger_espnow_buffer+32,currentTarget,sizeof(tiger_espnow_buffer)-2);
+
+    ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, 40+strlen(tiger_espnow_buffer+32)+1);
   }
 }
 
