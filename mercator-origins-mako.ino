@@ -258,8 +258,8 @@ bool requestMapScreenRefresh = false;
 
 #define USB_SERIAL Serial
 
-String ssid_not_connected = "-";
-String ssid_connected = ssid_not_connected;
+const String ssid_not_connected = "-";
+String ssid_connected;
 
 const bool enableOTAServer = true; // OTA updates
 AsyncWebServer asyncWebServer(80);
@@ -1487,6 +1487,8 @@ void dumpHeapUsage(const char* msg)
 void setup()
 {
   M5.begin();
+
+  ssid_connected = ssid_not_connected;
 
   msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
 
