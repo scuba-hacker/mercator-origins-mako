@@ -1639,7 +1639,6 @@ void setup()
     }
   }
   
-  // do depth centre initialisation here
   if (enableDepthSensor)
   {
     if (!BlueRobotics_DepthSensor.init())
@@ -1677,44 +1676,12 @@ void setup()
   // cannot use Pin 0 for receive of GPS (resets on startup), can use Pin 36, can use 26
   // cannot use Pin 0 for transmit of GPS (resets on startup), only Pin 26 can be used for transmit.
 
-  /*
-     Hi, I would like to use the GPIO 25 and 26 pins in the header for I2C, so I am setting them up as follows in MicroPython:
-
-    from machine import Pin, I2C
-    i2c = I2C(1, scl=Pin(26), sda=Pin(25), freq=400000)
-
-    However, the description says that "G36/G25 share the same port, when one of the pins is used, the other pin should be set as a floating input" and
-    provides the following example
-    ]
-    For example, to use the G36 pin as the ADC input, Configuration the G25 pin as FLOATING
-    setup()
-    {
-    M5.begin();
-    pinMode(36, INPUT);
-    gpio_pulldown_dis(GPIO_NUM_25);
-    gpio_pullup_dis(GPIO_NUM_25);
-    }
-
-    It seems that I should set GPIO36 to Floating.
-  */
-
   // see https://github.com/espressif/arduino-esp32/blob/master/cores/esp32/HardwareUSB_SERIAL.h
   // see https://github.com/espressif/arduino-esp32/blob/master/cores/esp32/HardwareUSB_SERIAL.cpp
 
   // https://techtutorialsx.com/2017/10/07/esp32-arduino-timer-interrupts/
   pinMode(RED_LED_GPIO, OUTPUT); // Red LED
   digitalWrite(RED_LED_GPIO, HIGH); // switch off
-
-  /*
-      timerSemaphore = xSemaphoreCreateBinary();
-      timer = timerBegin(0, 80, true);      // pre-scaler of 80, dividing 80MHz by 80 to trigger every 1uS
-      timerAttachInterrupt(timer, &onTimer, true);
-      timerAlarmWrite(timer, 50000, true);  // interupt generated every 50,000 uS = 5s
-      timerAlarmEnable(timer);
-  */
-  //    SendCASICNavXQuery(float_serial);
-  //    waitForCASICNavXResponse(float_serial);
-  //    waitForCASICACKResponse(float_serial);
 
 #ifdef INCLUDE_TWITTER_AT_COMPILE_TIME
   if (connectToTwitter && WiFi.status() == WL_CONNECTED)
@@ -1812,7 +1779,6 @@ void loop()
 {
   if (autoShutdownOnNoUSBPower)
     shutdownIfUSBPowerOff();
-
 
   if (msgsReceivedQueue)
   {
@@ -2166,7 +2132,7 @@ void acquireAllSensorReadings()
     colourMeasurements[colourIndex++] = clear_light;
     colourIndex = colourIndex % maxColourMeasurements;
 
-    uint16_t threshold = 4000;
+    uint16_t threshold = 4090;
     uint8_t samplesAtOrAboveThreshold=0;
     uint8_t samplesBelowThreshold=0;
 
