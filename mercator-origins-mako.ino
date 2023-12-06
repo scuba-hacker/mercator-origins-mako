@@ -269,6 +269,7 @@ const uint32_t disabledTempDisplayEndTime = 0xFFFFFFFF;
 uint32_t showTempDisplayEndTime = disabledTempDisplayEndTime;
 const uint32_t showTempDisplayHoldDuration = 5000;
 const uint32_t showTempAudioTestDisplayHoldDuration = 2000;
+bool firstLoopThroughTempScreen = false;
 
 char uplink_preamble_pattern[] = "MBJAEJ";
 char uplink_preamble_pattern2[] = "MBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJMBJAEJ";
@@ -2398,6 +2399,7 @@ void checkForButtonPresses()
 
         display_to_revert_to = display_to_show;
         display_to_show = NEXT_TARGET_DISPLAY_TEMP;
+        firstLoopThroughTempScreen = true;
         M5.Lcd.fillScreen(TFT_BLACK);
       }
       else if (p_secondButton->wasReleasefor(1500))     // Nav Screens: switch to next target
@@ -2410,6 +2412,7 @@ void checkForButtonPresses()
           
         display_to_revert_to = display_to_show;
         display_to_show = NEXT_TARGET_DISPLAY_TEMP;
+        firstLoopThroughTempScreen = true;
         M5.Lcd.fillScreen(TFT_BLACK);
       }
       else if (p_secondButton->wasReleasefor(50))      // Nav Screens: remind diver of current target
@@ -2420,6 +2423,7 @@ void checkForButtonPresses()
         // don't change target - remind diver of current target
         display_to_revert_to = display_to_show;
         display_to_show = THIS_TARGET_DISPLAY_TEMP;
+        firstLoopThroughTempScreen = true;
 
         M5.Lcd.fillScreen(TFT_BLACK);
       }
@@ -2834,15 +2838,20 @@ void drawCourseSection()
 
 void drawNextTarget()
 {
-  // shows current target, just changes the prefix text to Next rather than Towards
-  // can be consolidated with drawThisTarget  
-  M5.Lcd.setTextSize(3);
-  M5.Lcd.setTextFont(1);
-  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  M5.Lcd.setCursor(0, 5);
-
-  M5.Lcd.printf ("Next:\n\n%i) %s", nextWaypoint-currentDiveWaypoints+1, nextWaypoint->_label);
-
+  if (firstLoopThroughTempScreen)
+  {
+    firstLoopThroughTempScreen = false;
+    
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.setTextFont(1);
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    M5.Lcd.setCursor(0, 5);
+  
+    M5.Lcd.printf ("Next:\n\n%i) %s", nextWaypoint-currentDiveWaypoints+1, nextWaypoint->_label);
+  
+    publishToTigerCurrentTarget(nextWaypoint->_label);
+  }
+    
   if (millis() > showTempDisplayEndTime)
   {
     showTempDisplayEndTime = disabledTempDisplayEndTime;
@@ -2854,13 +2863,17 @@ void drawNextTarget()
 
 void drawThisTarget()
 {
-  M5.Lcd.setTextSize(3);
-  M5.Lcd.setTextFont(1);
-  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  M5.Lcd.setCursor(0, 5);
-
-  M5.Lcd.printf ("Towards\n\n%i) %s", nextWaypoint-currentDiveWaypoints+1, nextWaypoint->_label);
-
+  if (firstLoopThroughTempScreen)
+  {
+    firstLoopThroughTempScreen = false;
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.setTextFont(1);
+    M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    M5.Lcd.setCursor(0, 5);
+  
+    M5.Lcd.printf ("Towards\n\n%i) %s", nextWaypoint-currentDiveWaypoints+1, nextWaypoint->_label);
+  }
+  
   if (millis() > showTempDisplayEndTime)
   {
     showTempDisplayEndTime = disabledTempDisplayEndTime;
