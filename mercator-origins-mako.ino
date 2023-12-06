@@ -16,6 +16,8 @@
 #include <esp_now.h>
 #include <esp_wifi.h> // only for esp_wifi_set_channel()
 
+#include <memory.h>
+
 //#define INCLUDE_TWITTER_AT_COMPILE_TIME
 //#define INCLUDE_SMTP_AT_COMPILE_TIME
 //#define INCLUDE_QUBITRO_AT_COMPILE_TIME
@@ -45,7 +47,7 @@ bool enableRealTimePublishTigerLocation=true;
 bool enableWifiAtStartup = false;   // set to true only if no espnow at startup
 bool enableESPNowAtStartup = true;  // set to true only if no wifi at startup
 
-bool otaActiveListening = false; // OTA updates toggle
+bool otaActive = false; // OTA updates toggle
 bool otaFirstInit = false;       // Start OTA at boot if WiFi enabled
 
 // ************** ESPNow variables **************
@@ -256,8 +258,8 @@ bool requestMapScreenRefresh = false;
 
 #define USB_SERIAL Serial
 
-const char* ssid_not_connected = "-";
-const char* ssid_connected = ssid_not_connected;
+String ssid_not_connected = "-";
+String ssid_connected = ssid_not_connected;
 
 const bool enableOTAServer = true; // OTA updates
 AsyncWebServer asyncWebServer(80);
@@ -1457,8 +1459,9 @@ const float magnetHallReadingForReset = -50;
 float ESP32_hallRead();
 bool isMagnetPresentHallSensor();
 
-bool setupOTAWebServer(const char* _ssid, const char* _password, const char* label, uint32_t timeout);
-bool connectWiFiNoOTA(const char* _ssid, const char* _password, const char* label, uint32_t timeout);
+const char* scanForKnownNetwork();
+bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts);
+bool setupOTAWebServer(const char* _ssid, const char* _password, const char* label, uint32_t timeout, bool wifiOnly);
 
 void updateButtonsAndBuzzer()
 {
@@ -1469,6 +1472,16 @@ void updateButtonsAndBuzzer()
 
 char rxQueueItemBuffer[256];
 const uint8_t queueLength=4;
+
+void dumpHeapUsage(const char* msg)
+{  
+  if (writeLogToSerial)
+  {
+    multi_heap_info_t info;
+    heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT); // internal RAM, memory capable to store data or to create new task
+    USB_SERIAL.printf("\n%s : free heap bytes: %i  largest free heap block: %i min free ever: %i\n",  msg, info.total_free_bytes, info.largest_free_block, info.minimum_free_bytes);
+  }
+}
 
 void setup()
 {
@@ -1520,9 +1533,9 @@ void setup()
 
   if (enableOTAServer && enableWifiAtStartup)
   {
-    if (!setupOTAWebServer(ssid_1, password_1, label_1, timeout_1))
-      if (!setupOTAWebServer(ssid_2, password_2, label_2, timeout_2))
-        setupOTAWebServer(ssid_3, password_3, label_3, timeout_3);
+    const bool wifiOnly = false;
+    const int scanAttempts = 3;
+    connectToWiFiAndInitOTA(wifiOnly,scanAttempts);
 
     if (WiFi.status() == WL_CONNECTED)
       otaFirstInit = true;
@@ -1771,8 +1784,6 @@ void loop_no_gps()
   M5.Lcd.setTextSize(3);
   M5.Lcd.printf("%.2fV %.1fmA \n", M5.Axp.GetBatVoltage(), M5.Axp.GetBatCurrent());
 
-  //  testForShake();
-
   if (autoShutdownOnNoUSBPower)
   {
     shutdownIfUSBPowerOff();
@@ -1799,17 +1810,6 @@ void loop()
   if (autoShutdownOnNoUSBPower)
     shutdownIfUSBPowerOff();
 
-  /*
-    testForDualButtonPressAutoShutdownChange();
-
-    if (!autoShutdownOnNoUSBPower && gps.location.isValid() == false)
-    {
-      // if disabling of 0V USB volts happens when no GPS, switch into sensor only mode
-      // if no gps / no cable connected and autoshutdown is disabled then show the sensor stats only
-      loop_no_gps();
-      return;
-    }
-  */
 
   if (msgsReceivedQueue)
   {
@@ -1923,8 +1923,6 @@ bool processGPSMessageIfAvailable()
   {
     if (enableButtonTestMode)
       readAndTestGoProButtons();
-
-    //   testForDualButtonPressAutoShutdownChange();
 
     char nextByte = float_serial.read();
 
@@ -2981,7 +2979,7 @@ void drawLatLong()
       {
         map_screen_refresh_minimum_interval = 3000;   // on 1st time through, switch from 1 sec to 3 secs
       }
-      else    // on 2nd time through, disable real time publisj
+      else    // on 2nd time through, disable real time publish
       {
         enableRealTimePublishTigerLocation = false;
       }
@@ -3017,7 +3015,7 @@ void drawLocationStats()
   if (WiFi.status() == WL_CONNECTED)
   {
     M5.Lcd.printf("%s ", WiFi.localIP().toString());
-    if (otaActiveListening)
+    if (otaActive)
       M5.Lcd.println("OTA");
     else
       M5.Lcd.println("");
@@ -3056,10 +3054,10 @@ void drawJourneyStats()
   M5.Lcd.setCursor(5, 17);
 
 
-  M5.Lcd.printf("OTA:%hu Uplink:%hu", otaActiveListening,  enableUplinkComms);
+  M5.Lcd.printf("OTA:%hu Uplink:%hu", otaActive,  enableUplinkComms);
 
   M5.Lcd.setCursor(5, 34);  
-  M5.Lcd.printf("Wifi:%hu %s", WiFi.status() == WL_CONNECTED, (ESPNowActive ? "ESPNow On" : ssid_connected));
+  M5.Lcd.printf("Wifi:%hu %s", WiFi.status() == WL_CONNECTED, (ESPNowActive ? "ESPNow On" : ssid_connected.c_str()));
   M5.Lcd.setCursor(5, 51);
   M5.Lcd.printf("Fix:%lu Up:%lu", fixCount, uplinkMessageCount);
   M5.Lcd.setCursor(5, 68);
@@ -3442,67 +3440,6 @@ void sendUplinkTestMessage()
   }
 }
 
-
-void flipAutoPowerOffMode()
-{
-  M5.Lcd.fillScreen(TFT_MAGENTA);
-  updateButtonsAndBuzzer();
-  M5.Beep.setBeep(1400, 100);
-  updateButtonsAndBuzzer();
-
-  autoShutdownOnNoUSBPower = !autoShutdownOnNoUSBPower;
-
-  M5.Lcd.setCursor(0, 0);
-  M5.Lcd.setTextSize(4);
-  if (autoShutdownOnNoUSBPower)
-    M5.Lcd.print("  Auto\nShutdown\n   On");
-  else
-    M5.Lcd.print("  Auto\nShutdown\n   Off");
-
-  delay(2000);
-  M5.Beep.setBeep(1200, 100);
-  updateButtonsAndBuzzer();
-  M5.Lcd.fillScreen(TFT_BLACK);
-}
-
-void testForShake()
-{
-  const float accel_trigger = 30.0;
-
-  if (mag_accel_x * mag_accel_x + mag_accel_y * mag_accel_y + mag_accel_z * mag_accel_z > accel_trigger * accel_trigger)
-  {
-    flipAutoPowerOffMode();
-  }
-
-  //    if (mag_accel_x > accel_trigger || mag_accel_y > accel_trigger || accel_trigger > accel_trigger ||
-  //     mag_accel_x < -accel_trigger || mag_accel_y < -accel_trigger || -accel_trigger < -accel_trigger)
-  //  {
-  //    flipAutoPowerOffMode();
-  //  }
-}
-
-void testForSingleButtonPressAutoShutdownChange()
-{
-  updateButtonsAndBuzzer();
-
-  // not used yet
-  if (p_primaryButton->wasReleasefor(750) || p_secondButton->wasReleasefor(750))
-  {
-    flipAutoPowerOffMode();
-  }
-}
-
-void testForDualButtonPressAutoShutdownChange()
-{
-  updateButtonsAndBuzzer();
-
-  // currently not called, for switching into pressure pot test mode, no cable.
-  if (p_primaryButton->wasReleasefor(1000) && p_secondButton->wasReleasefor(1000))
-  {
-    flipAutoPowerOffMode();
-  }
-}
-
 const int32_t durationBetweenGuidanceSounds = 3000;
 
 void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
@@ -3511,7 +3448,7 @@ void refreshDirectionGraphic( float directionOfTravel,  float headingToTarget)
     return;
 
   // Calculate whether the diver needs to continue straight ahead,
-  // rotate clockwise or rotate anticlockwise and update graphic.
+  // rotate clockwise or rotate anticlockwise and u pdate graphic.
   // Blacks out if no journey recorded.
   const int16_t edgeBound = 25;    // If journey course within +- 25 degrees of target heading then go ahead
 
@@ -3980,15 +3917,6 @@ std::string getCardinal(float b)
 
   return result;
 }
-/*
-  void getTempAndHumidityAHT20(float& h, float& t)
-  {
-  sensors_event_t humidity, temp;
-  Adafruit_TempHumidity.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
-  h=humidity.relative_humidity;
-  t=temp.temperature;
-  }
-*/
 
 uint32_t nextDepthReadCompleteTime = 0xFFFFFFFF;
 const uint32_t depthReadCompletePeriod = 10000;
@@ -4210,7 +4138,7 @@ void toggleESPNowActive()
     
     if (ESPNowActive == false)
     {
-      if (otaActiveListening)
+      if (otaActive)
         toggleOTAActive();
 
       if (WiFi.status() == WL_CONNECTED)
@@ -4233,7 +4161,8 @@ void toggleESPNowActive()
         if (writeLogToSerial)
           USB_SERIAL.println("Wifi\nDisabled\nESPNow\nEnabled");
 
-        isPairedWithAudioPod = pairWithPeer(ESPNow_audio_pod_peer,"AudioPod",1); // attempt to peer once
+        int peeringAttempts = 3;
+        isPairedWithAudioPod = pairWithPeer(ESPNow_audio_pod_peer,"AudioPod",peeringAttempts);
         
         if (isPairedWithAudioPod)
         {
@@ -4241,7 +4170,8 @@ void toggleESPNowActive()
           publishToSilkySetVolume(defaultSilkyVolume);
         }
 
-        isPairedWithTiger = pairWithPeer(ESPNow_tiger_peer,"Tiger",5); // attempt to peer 5 times - Tiger has to get NTP time at startup
+        peeringAttempts = 5;
+        isPairedWithTiger = pairWithPeer(ESPNow_tiger_peer,"Tiger",peeringAttempts);
 
         if (isPairedWithTiger)
         {
@@ -4298,11 +4228,11 @@ void toggleWiFiActive()
 
   if (WiFi.status() == WL_CONNECTED)
   {
-    if (otaActiveListening)
+    if (otaActive)
     {
       asyncWebServer.end();
       M5.Lcd.println("OTA Disabled");
-      otaActiveListening = false;
+      otaActive = false;
     }
 
     WiFi.disconnect();
@@ -4315,10 +4245,9 @@ void toggleWiFiActive()
   {
     M5.Lcd.printf("Wifi Connecting");
 
-    // startup Wifi only
-    if (!connectWiFiNoOTA(ssid_1, password_1, label_1, timeout_1))
-      if (!connectWiFiNoOTA(ssid_2, password_2, label_2, timeout_2))
-        connectWiFiNoOTA(ssid_3, password_3, label_3, timeout_3);
+    const bool wifiOnly = true;
+    const int scanAttempts = 3;
+    connectToWiFiAndInitOTA(wifiOnly,scanAttempts);
 
     M5.Lcd.fillScreen(TFT_ORANGE);
     M5.Lcd.setCursor(10, 10);
@@ -4343,11 +4272,11 @@ void toggleOTAActive()
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
   M5.Lcd.setRotation(1);
 
-  if (otaActiveListening)
+  if (otaActive)
   {
     asyncWebServer.end();
     M5.Lcd.println("OTA Disabled");
-    otaActiveListening = false;
+    otaActive = false;
     delay (2000);
   }
   else
@@ -4393,7 +4322,7 @@ void toggleOTAActive()
         M5.Lcd.printf("OTA Enabled");
       }
               
-      otaActiveListening = true;
+      otaActive = true;
     }
     else
     {
@@ -4519,7 +4448,7 @@ void publishToTigerCurrentTarget(const char* currentTarget)
     tiger_espnow_buffer[0] = 'c';  // command c= current target
     tiger_espnow_buffer[1] = '\0';
     strncpy(tiger_espnow_buffer+1,currentTarget,sizeof(tiger_espnow_buffer)-2);
-    ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, strlen(tiger_espnow_buffer)+1);
+    ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, strlen(currentTarget)+1);
   }
 }
 
@@ -4533,21 +4462,28 @@ void publishToTigerLocationAndTarget(const char* currentTarget)
 
     const int maxCodeLength = 6;
 
+    const int targetCodeOffset = 1;
+    const int latitudeOffset = 8;
+    const int longitudeOffset = 16;
+    const int headingOffset = 24;
+    const int currentTargetOffset = 32;
+          
     const char* endOfCode=currentTarget;
     while (endOfCode - currentTarget < maxCodeLength && std::isalnum(*endOfCode++));
 
     if (endOfCode != currentTarget)
-      memcpy(tiger_espnow_buffer+1,currentTarget,endOfCode - currentTarget - 1);
+      memcpy(tiger_espnow_buffer+targetCodeOffset,currentTarget,endOfCode - currentTarget - 1);
   
     tiger_espnow_buffer[endOfCode - currentTarget + 1] = '\0';
 
-    memcpy(tiger_espnow_buffer+8,&Lat,8);
-    memcpy(tiger_espnow_buffer+16,&Lng,8);
-    memcpy(tiger_espnow_buffer+24,&magnetic_heading,8);
+    memcpy(tiger_espnow_buffer+latitudeOffset,&Lat,sizeof(Lat));
+    memcpy(tiger_espnow_buffer+longitudeOffset,&Lng,sizeof(Lng));
+    memcpy(tiger_espnow_buffer+headingOffset,&magnetic_heading,sizeof(magnetic_heading));
 
-    strncpy(tiger_espnow_buffer+32,currentTarget,sizeof(tiger_espnow_buffer)-2);
+    strncpy(tiger_espnow_buffer+currentTargetOffset,currentTarget,sizeof(tiger_espnow_buffer)-2);
 
-    ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, 40+strlen(tiger_espnow_buffer+32)+1);
+//    ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, 40+strlen(tiger_espnow_buffer+32)+1);
+    ESPNowSendResult = esp_now_send(ESPNow_tiger_peer.peer_addr, (uint8_t*)tiger_espnow_buffer, currentTargetOffset+strlen(currentTarget)+1);
   }
 }
 
@@ -4703,74 +4639,122 @@ void configESPNowDeviceAP()
     }
   }  
 }
-bool connectWiFiNoOTA(const char* _ssid, const char* _password, const char* label, uint32_t timeout)
+
+const char* scanForKnownNetwork() // return first known network found
 {
-  bool forcedCancellation = false;
-  M5.Lcd.setCursor(0, 0);
-  M5.Lcd.fillScreen(TFT_BLACK);
-  M5.Lcd.setTextSize(2);
-  bool connected = false;
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(_ssid, _password);
+  const char* network = nullptr;
 
-  // Wait for connection for max of timeout/1000 seconds
-  M5.Lcd.printf("%s Wifi", label);
-  int count = timeout / 500;
-  while (WiFi.status() != WL_CONNECTED && --count > 0)
+  M5.Lcd.println("Scan WiFi\nSSIDs...");
+  int8_t scanResults = WiFi.scanNetworks();
+
+  if (scanResults != 0)
   {
-    // check for cancellation button - top button.
-    updateButtonsAndBuzzer();
-
-    if (p_primaryButton->isPressed()) // Connect to Wifi: cancel connection attempts
+    for (int i = 0; i < scanResults; ++i) 
     {
-      forcedCancellation = true;
-      break;
-    }
+      // Print SSID and RSSI for each device found
+      String SSID = WiFi.SSID(i);
 
-    M5.Lcd.print(".");
-    delay(500);
+      delay(10);
+      
+      // Check if the current device starts with the peerSSIDPrefix
+      if (strcmp(SSID.c_str(), ssid_1) == 0)
+        network=ssid_1;
+      else if (strcmp(SSID.c_str(), ssid_2) == 0)
+        network=ssid_2;
+      else if (strcmp(SSID.c_str(), ssid_3) == 0)
+        network=ssid_3;
+
+      if (network)
+        break;
+    }    
   }
-  M5.Lcd.print("\n\n");
 
-  if (WiFi.status() == WL_CONNECTED)
+  if (network)
   {
-    M5.Lcd.setRotation(0);
-    M5.Lcd.fillScreen(TFT_BLACK);
-    M5.Lcd.setCursor(0, 155);
-    M5.Lcd.setTextSize(2);
-    M5.Lcd.printf("%s\n\n", WiFi.localIP().toString());
-    M5.Lcd.println(WiFi.macAddress());
-    connected = true;
-    ssid_connected = _ssid;
+      M5.Lcd.printf("Found:\n%s",network);
 
-    M5.Lcd.qrcode("http://" + WiFi.localIP().toString() + "/update", 0, 0, 135);
-
-    updateButtonsAndBuzzer();
-
-    if (p_secondButton->isPressed()) // Connect to Wifi: pause QR for 20 seconds
-    {
-      M5.Lcd.print("\n20 second pause");
-      delay(20000);
-    }
+    if (writeLogToSerial)
+      USB_SERIAL.printf("Found:\n%s\n",network);
   }
   else
   {
-    if (forcedCancellation)
-      M5.Lcd.print("\n     Cancelled\n Connection Attempts");
-    else
-      M5.Lcd.print("No Connection");
+    M5.Lcd.println("None\nFound");
+    if (writeLogToSerial)
+      USB_SERIAL.println("No networks Found\n");
   }
 
-  delay(1000);
+  // clean up ram
+  WiFi.scanDelete();
 
+  return network;
+}
+
+bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts)
+{
+  if (wifiOnly && WiFi.status() == WL_CONNECTED)
+    return true;
+
+  M5.Lcd.setCursor(0, 0);
   M5.Lcd.fillScreen(TFT_BLACK);
+  M5.Lcd.setTextSize(2);
 
+  while (repeatScanAttempts-- &&
+         (WiFi.status() != WL_CONNECTED ||
+          WiFi.status() == WL_CONNECTED && wifiOnly == false && otaActive == false ) )
+  {
+    const char* network = scanForKnownNetwork();
+  
+    int connectToFoundNetworkAttempts = 3;
+    const int repeatDelay = 1000;
+  
+    if (strcmp(network,ssid_1) == 0)
+    {
+      while (connectToFoundNetworkAttempts-- && !setupOTAWebServer(ssid_1, password_1, label_1, timeout_1, wifiOnly))
+        delay(repeatDelay);
+    }
+    else if (strcmp(network,ssid_2) == 0)
+    {
+      while (connectToFoundNetworkAttempts-- && !setupOTAWebServer(ssid_2, password_2, label_2, timeout_2, wifiOnly))
+        delay(repeatDelay);
+    }
+    else if (strcmp(network,ssid_3) == 0)
+    {
+      while (connectToFoundNetworkAttempts-- && !setupOTAWebServer(ssid_3, password_3, label_3, timeout_3, wifiOnly))
+        delay(repeatDelay);
+    }
+    
+    delay(1000);
+  }
+
+  bool connected=WiFi.status() == WL_CONNECTED;
+  
+  if (connected)
+  {
+    ssid_connected = WiFi.SSID();
+  }
+  else
+  {
+    ssid_connected = ssid_not_connected;
+  }
+  
   return connected;
 }
 
-bool setupOTAWebServer(const char* _ssid, const char* _password, const char* label, uint32_t timeout)
+bool setupOTAWebServer(const char* _ssid, const char* _password, const char* label, uint32_t timeout, bool wifiOnly)
 {
+  if (wifiOnly && WiFi.status() == WL_CONNECTED)
+  {
+    if (writeLogToSerial)
+      USB_SERIAL.printf("setupOTAWebServer: attempt to connect wifiOnly, already connected - otaActive=%i\n",otaActive);
+
+    return true;
+  }
+
+  if (writeLogToSerial)
+    USB_SERIAL.printf("setupOTAWebServer: attempt to connect %s wifiOnly=%i when otaActive=%i\n",_ssid, wifiOnly,otaActive);
+
   bool forcedCancellation = false;
+
   M5.Lcd.setCursor(0, 0);
   M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setTextSize(2);
@@ -4786,7 +4770,7 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
     // check for cancellation button - top button.
     updateButtonsAndBuzzer();
 
-    if (p_primaryButton->isPressed()) // Connect to Wifi: cancel connection attempts
+    if (p_primaryButton->isPressed()) // cancel connection attempts
     {
       forcedCancellation = true;
       break;
@@ -4797,43 +4781,72 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
   }
   M5.Lcd.print("\n\n");
 
-  if (WiFi.status() == WL_CONNECTED)
+  if (WiFi.status() == WL_CONNECTED )
   {
-    asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
-      request->send(200, "text/plain", "To upload firmware use /update");
-    });
-
-    AsyncElegantOTA.begin(&asyncWebServer);    // Start AsyncElegantOTA
-    asyncWebServer.begin();
-
-    M5.Lcd.setRotation(0);
-    M5.Lcd.fillScreen(TFT_BLACK);
-    M5.Lcd.setCursor(0, 155);
-    M5.Lcd.setTextSize(2);
-    M5.Lcd.printf("%s\n\n", WiFi.localIP().toString());
-    M5.Lcd.println(WiFi.macAddress());
-    connected = true;
-    ssid_connected = _ssid;
-
-    M5.Lcd.qrcode("http://" + WiFi.localIP().toString() + "/update", 0, 0, 135);
-
-    updateButtonsAndBuzzer();
-
-    if (p_secondButton->isPressed())  // Connect to Wifi: pause QR for 20 seconds
+    if (wifiOnly == false && !otaActive)
     {
-      M5.Lcd.print("\n20 second pause");
-      delay(20000);
+      if (writeLogToSerial)
+        USB_SERIAL.println("setupOTAWebServer: WiFi connected ok, starting up OTA");
+
+      if (writeLogToSerial)
+        USB_SERIAL.println("setupOTAWebServer: calling asyncWebServer.on");
+
+      asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
+        request->send(200, "text/plain", "To upload firmware use /update");
+      });
+        
+      if (writeLogToSerial)
+        USB_SERIAL.println("setupOTAWebServer: calling AsyncElegantOTA.begin");
+
+      AsyncElegantOTA.begin(&asyncWebServer);    // Start AsyncElegantOTA
+
+      if (writeLogToSerial)
+        USB_SERIAL.println("setupOTAWebServer: calling asyncWebServer.begin");
+
+      asyncWebServer.begin();
+
+      dumpHeapUsage("setupOTAWebServer(): after asyncWebServer.begin");
+
+      if (writeLogToSerial)
+        USB_SERIAL.println("setupOTAWebServer: OTA setup complete");
+
+      M5.Lcd.setRotation(0);
+      
+      M5.Lcd.fillScreen(TFT_BLACK);
+      M5.Lcd.setCursor(0,155);
+      M5.Lcd.setTextSize(2);
+      M5.Lcd.printf("%s\n\n",WiFi.localIP().toString());
+      M5.Lcd.println(WiFi.macAddress());
+      connected = true;
+      otaActive = true;
+  
+      M5.Lcd.qrcode("http://"+WiFi.localIP().toString()+"/update",0,0,135);
+  
+      delay(2000);
+
+      connected = true;
+  
+      updateButtonsAndBuzzer();
+  
+      if (p_secondButton->isPressed())
+      {
+        M5.Lcd.print("\n\n20\nsecond pause");
+        delay(20000);
+      }
     }
   }
   else
   {
     if (forcedCancellation)
-      M5.Lcd.print("\n     Cancelled\n Connection Attempts");
+      M5.Lcd.print("\nCancelled\nConnect\nAttempts");
     else
-      M5.Lcd.print("No Connection");
-  }
+    {
+      if (writeLogToSerial)
+        USB_SERIAL.printf("setupOTAWebServer: WiFi failed to connect %s\n",_ssid);
 
-  delay(1000);
+      M5.Lcd.print("No Connect");
+    }
+  }
 
   M5.Lcd.fillScreen(TFT_BLACK);
 
@@ -5205,9 +5218,8 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix)
 {
   bool peerFound = false;
   
-  M5.Lcd.println("Scanning   Networks...");
+  M5.Lcd.printf("Scan For\n%s\n",peerSSIDPrefix);
   int8_t scanResults = WiFi.scanNetworks();
-  M5.Lcd.println("Complete");
   
   // reset on each scan 
   memset(&peer, 0, sizeof(peer));
@@ -5312,12 +5324,16 @@ bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, int max
     if (result && peer.channel == ESPNOW_CHANNEL)
     { 
       isPaired = ESPNowManagePeer(peer);
-      M5.Lcd.printf("%s Pair ok\n",peerSSIDPrefix);
+      M5.Lcd.setTextColor(TFT_GREEN);
+      M5.Lcd.printf("%s Pair\nok\n",peerSSIDPrefix);
+      M5.Lcd.setTextColor(TFT_WHITE);
     }
     else
     {
       peer.channel = ESPNOW_NO_PEER_CHANNEL_FLAG;
-      M5.Lcd.printf("%s Pair fail\n",peerSSIDPrefix);
+      M5.Lcd.setTextColor(TFT_RED);
+      M5.Lcd.printf("%s Pair\nfail\n",peerSSIDPrefix);
+      M5.Lcd.setTextColor(TFT_WHITE);
     }
   }
 
